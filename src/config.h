@@ -4,7 +4,7 @@
 // ************************************************
 // Com WIFI and MQTT
 // ************************************************
-#define wifi_ssid "Livebox-4455" //Modify as needed
+#define wifi_ssid "xxxxxxxx" //Modify as needed
 #define wifi_password "xxxxxxxxx" //Modify as needed
 #define mqtt_server "192.168.1.24" //Modify as needed
 
