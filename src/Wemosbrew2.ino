@@ -43,16 +43,17 @@
 #define OLED_RESET 0  // GPIO0
 
 // Status LED
-#define STATUSLED_PIN D3
+#define STATUSLED_PIN D3 // optional feature
 
 // Output Relay heat
-#define RELAY_PIN D0 // Monte en inverse high pour eteint
+#define RELAY_PIN D0
 
-// Output PWM Moteur
+// Output PWM Pump
 #define PWM_OUT D8
 
 // One-Wire Temperature Sensor
 #define ONE_WIRE_BUS D4
+
 // Buttons
 #define BUTTON_DOWN_PIN D5
 #define BUTTON_UP_PIN D6
@@ -66,9 +67,9 @@
 // ************************************************
 // Com WIFI and MQTT
 // ************************************************
-#define wifi_ssid "Livebox-4455"
-#define wifi_password "xxxxxxxxx"
-#define mqtt_server "192.168.1.24"
+#define wifi_ssid "Livebox-4455" //Modify as needed
+#define wifi_password "xxxxxxxxx" //Modify as needed
+#define mqtt_server "192.168.1.24" //Modify as needed
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -111,9 +112,9 @@ boolean statusMQTT = false;
 #define cde_sd3_topic "cmdbiere/Stepd3"
 #define cde_sd4_topic "cmdbiere/Stepd4"
 
-long lastSent = 0;   //Horodatage du dernier message publié sur MQTT
+long lastSent = 0;   // timestamp last MQTT message published
 long lastReceived = 0;
-char message_buff[100]; //Buffer qui permet de décoder les messages MQTT
+char message_buff[100]; //Buffer for incomming MQTT messages
 
 
 // ************************************************
@@ -125,9 +126,10 @@ double Setpoint;
 double Input;
 double Output;
 float pctchauf;
+
 // Initialize default StepSetPoint
-double stepset[] = {52, 63, 72, 78};
-long stepd[] = {12, 30, 40, 10};
+double stepset[] = {52, 63, 72, 78}; //temperature of steps
+long stepd[] = {12, 30, 40, 10}; //duration in minutes of steps
 
 volatile long onTime = 0;
 
@@ -204,7 +206,7 @@ void setup()
 Serial.begin(115200);
 
 // Button init
-Serial.println("Initialize Boutons");
+Serial.println("Initialize Buttons");
 pinMode(BUTTON_DOWN_PIN, INPUT);
 pinMode(BUTTON_UP_PIN, INPUT);
 pinMode(BUTTON_SELECT_PIN, INPUT);
@@ -225,7 +227,7 @@ if (pwm_on == true){
   analogWrite(PWM_OUT, pwm_value);
   }
 else {
-  digitalWrite(PWM_OUT, LOW);  // simple on/off logic
+  digitalWrite(PWM_OUT, LOW);  // simple onoff logic
   }
 
 // Start up the DS18B20 One Wire Temperature Sensor
@@ -260,7 +262,7 @@ else {
   Serial.println("EEPROM size changed - EEPROM data zeroed - commit() to make permanent");
   }
 
-// Assign current variables
+// Assign current variables from stored values
 Setpoint = eepromVar1.eeSetpoint;
 Kp = eepromVar1.eeKp;
 Ki = eepromVar1.eeKi;
@@ -280,16 +282,16 @@ display.setRotation(2);
 display.setTextSize(1);
 display.setTextColor(WHITE);
 display.setCursor(0,0);
-display.println("initialisation");
+display.println("init...");
 display.display();
 
 // Initialize Connexion
 statusWifi = setup_wifi();
-client.setServer(mqtt_server, 1883); //Configuration de la connexion au serveur MQTT
+client.setServer(mqtt_server, 1883);
 client.setCallback(callback);
 
-// Fin setup
-Serial.println("Fin Set up");
+// End setup
+Serial.println("End Set up");
 display.clearDisplay();
 display.setCursor(0,0);
 display.println("OFF");
@@ -312,7 +314,7 @@ if (statusMQTT == true) {
     sprintf(message_buff, "%d", pwm_value);
     dtostrf(pctchauf, 6, 2, message_buff);
     client.publish(pctchauf_topic, message_buff, true);
-    client.loop(); // envoie et recoit les instructions MQQT
+    client.loop();
     }
 
 if (opState == OFF){
@@ -341,11 +343,8 @@ statusMQTT = reconnect(); // try to reconnect MQTT
 client.loop();
 
 // wait for button release before changing state
-// Serial.print("Attente bouton : ");
+
 while(readButtons() != 0) {} // wait for button press
-//Serial.print("Attente bouton : ");
-//Serial.print("Etat : ");
-//Serial.println(opState);
 
 switch (opState){
   case OFF:
@@ -411,7 +410,7 @@ while(true){
     return;
     }
 
-  statusMQTT = reconnect(); // on tente de reconnecter MQTT
+  statusMQTT = reconnect(); // test and reconnect MQTT if down
   display.clearDisplay();
   display.setCursor(0, 0);
   display.setTextSize(1);
@@ -423,7 +422,7 @@ while(true){
     }
   else  {
     display.println("OFF Offl");
-    offlineMode = true; // On passe en operation offline
+    offlineMode = true; // Switch to offline operation
     display.print("Dwn > reconnect");
     }
   display.display();
@@ -447,7 +446,7 @@ uint8_t buttons = 0;
 while(true){
   buttons = readButtons();
   if ((buttons & BUTTON_DOWN)
-  && (abs(Input - Setpoint) < 0.5)){  // Should be at steady-state
+  && (abs(Input - Setpoint) < 0.5)){  // Should be at steady-state to start autotune
     StartAutoTune();
     }
 
@@ -461,7 +460,7 @@ while(true){
     return;
     }
 
-  statusMQTT = reconnect(); // on tente de reconnecter MQTT
+  statusMQTT = reconnect(); // test and reconnect MQTT if down
   display.clearDisplay();
   display.setCursor(0, 0);
   display.setTextSize(1);
@@ -500,9 +499,10 @@ while(true){
   display.display();
   delay(100);
   DoControl();
-  // Mise en securite si sonde Temp non lue
-  if (Input <= 0){ //check if disconnected -127
-    digitalWrite(RELAY_PIN, LOW); // on se met en securité
+
+  // Safe mode if no temperature reading
+    if (Input <= 0){ //check if disconnected -127
+    digitalWrite(RELAY_PIN, LOW); // switch off heat
     opState = OFF;
     return;
     }
@@ -529,7 +529,7 @@ while(true){
     }
 
   if (buttons & BUTTON_SELECT){ // Select to execute steps
-    for (step = 0; step < 4; step++) { //loop sur les 4 steps
+    for (step = 0; step < 4; step++) { //loop sur 4 steps
       RunStep(step, stepset[step], stepd[step]);
       }
     display.clearDisplay();
@@ -542,7 +542,7 @@ while(true){
     return;
     }
 
-  statusMQTT = reconnect(); // on tente de reconnecter MQTT
+  statusMQTT = reconnect(); // test and reconnect MQTT if down
   display.clearDisplay();
   display.setCursor(0, 0);
   display.setTextSize(1);
@@ -567,7 +567,7 @@ while(true){
     client.publish(sd3_topic, message_buff, true);
     sprintf(message_buff, "%d", stepd[3]);
     client.publish(sd4_topic, message_buff, true);
-    client.loop(); // envoie et recoit les instructions MQQT
+    client.loop();
     display.println("AUTO Onl");
     }
   else  {
@@ -576,7 +576,7 @@ while(true){
 
   display.println("S | T | D");
 
-  for (step = 0; step < 4; step++) { // affiche les valeurs de steps
+  for (step = 0; step < 4; step++) { // display steps values
     display.print(step+1);
     display.print(" | ");
     display.print(int(stepset[step]));
@@ -628,6 +628,7 @@ while(millis() <= endTime) {
     }
 
   DoControl();
+
   // Safe mode if temperature not read
   if (Input <= 0){ //check if disconnected -127
     digitalWrite(RELAY_PIN, LOW); // switch off
@@ -986,8 +987,7 @@ tuning = true;
 // ************************************************
 void UpdateLedStatus()
 {
-// if set point met +- 1 deg
-if (abs(Input - Setpoint) < 1) {
+if (abs(Input - Setpoint) < 1) {// Led on if at temp +- 1 deg
   digitalWrite(STATUSLED_PIN, HIGH);
   }
 else {
@@ -1081,7 +1081,7 @@ Serial.println(wifi_ssid);
 WiFi.begin(wifi_ssid, wifi_password);
 int i=0;
 
-while ((WiFi.status() != WL_CONNECTED) && (i <= 5)) { //20 temptatives
+while ((WiFi.status() != WL_CONNECTED) && (i <= 5)) { //5 attempt
   delay(500);
   Serial.print(".");
   i++;
@@ -1093,7 +1093,7 @@ if (WiFi.status() == WL_CONNECTED)  {
   Serial.print("=> Addresse IP : ");
   Serial.print(WiFi.localIP());
 
-  //Affiche l adresse IP sur OLED
+  //display IP
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(WHITE);
@@ -1119,7 +1119,7 @@ else {
 }
 
 // ************************************************
-// Reconnexion MQTT
+// reconnect MQTT
 // ************************************************
 
 boolean reconnect()
