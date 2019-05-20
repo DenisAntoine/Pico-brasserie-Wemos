@@ -127,7 +127,7 @@ Ticker timer;
 // ************************************************
 byte ATuneModeRemember=2;
 double aTuneStep=1000; // 1 sec step for 15000 window
-double aTuneNoise=0.25; // according to temp precision
+double aTuneNoise=0.15; // according to temp precision
 unsigned int aTuneLookBack=300; // very slow process
 boolean tuning = false;
 PID_ATune aTune(&Input, &Output);
