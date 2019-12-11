@@ -12,7 +12,7 @@
             "type": "platformio-debug",
             "request": "launch",
             "name": "PIO Debug",
-            "executable": "/home/antoine/Documents/Projets/Pico-brasserie-Wemos/.pio/build/d1_mini/firmware.elf",
+            "executable": "/media/antoine/data/PlatformIO/Projects/Pico-brasserie-Wemos/.pio/build/d1_mini/firmware.elf",
             "toolchainBinDir": "/home/antoine/.platformio/packages/toolchain-xtensa/bin",
             "preLaunchTask": {
                 "type": "PlatformIO",
@@ -24,7 +24,7 @@
             "type": "platformio-debug",
             "request": "launch",
             "name": "PIO Debug (skip Pre-Debug)",
-            "executable": "/home/antoine/Documents/Projets/Pico-brasserie-Wemos/.pio/build/d1_mini/firmware.elf",
+            "executable": "/media/antoine/data/PlatformIO/Projects/Pico-brasserie-Wemos/.pio/build/d1_mini/firmware.elf",
             "toolchainBinDir": "/home/antoine/.platformio/packages/toolchain-xtensa/bin",
             "internalConsoleOptions": "openOnSessionStart"
         }
