@@ -1252,6 +1252,8 @@ if ((eepromVar1.eeSetpoint != Setpoint) | (eepromVar1.eeKp != Kp) | (eepromVar1.
 // ************************************************
 unsigned long publishOpstate(unsigned long timestamp, unsigned long freq)
 {
+  unsigned long returntime = timestamp;
+  
   if (millis() > timestamp + freq)
   {
     dtostrf(Input, 4, 2, message_buff);
@@ -1271,13 +1273,13 @@ unsigned long publishOpstate(unsigned long timestamp, unsigned long freq)
     client.publish(sT3_topic, message_buff, true);
     dtostrf(stepset[3], 4, 2, message_buff);
     client.publish(sT4_topic, message_buff, true);
-    sprintf(message_buff, "%d", stepd[0]);
+    sprintf(message_buff, "%lu", stepd[0]);
     client.publish(sd1_topic, message_buff, true);
-    sprintf(message_buff, "%d", stepd[1]);
+    sprintf(message_buff, "%lu", stepd[1]);
     client.publish(sd2_topic, message_buff, true);
-    sprintf(message_buff, "%d", stepd[2]);
+    sprintf(message_buff, "%lu", stepd[2]);
     client.publish(sd3_topic, message_buff, true);
-    sprintf(message_buff, "%d", stepd[3]);
+    sprintf(message_buff, "%lu", stepd[3]);
     client.publish(sd4_topic, message_buff, true);
     dtostrf(Kp, 8, 2, message_buff);
     client.publish(Kp_topic, message_buff, true);
@@ -1287,6 +1289,7 @@ unsigned long publishOpstate(unsigned long timestamp, unsigned long freq)
     client.publish(Kd_topic, message_buff, true);
     
     client.loop();
-    lastSent = millis();
+    returntime = millis();
   }
+  return returntime;
 }
