@@ -14,27 +14,20 @@
 // wifi et MQTT
 #include "ESP8266WiFi.h"
 #include "PubSubClient.h"
-
 // PID Library
 #include "PID_v1.h"
 #include "PID_AutoTune_v0.h"
-
 // Libraries for the Adafruit OLED Shield
 #include "Wire.h"
 #include "Adafruit_GFX.h"
 #include "Adafruit_SSD1306.h"
-
 // Libraries for the DS18B20 Temperature Sensor
 #include "OneWire.h"
 #include "DallasTemperature.h"
-
 // So we can save and retrieve settings
 #include "ESP_EEPROM.h"
-
-
 // Ticker to manage interrupt
 #include "Ticker.h"
-
 // config file for Wifi and MQTT
 #include "config.h"
 
@@ -43,48 +36,43 @@
 // Pin definitions
 // ************************************************
 
-// OLED
 #define OLED_RESET 0  // GPIO0
-
-// Status LED
 #define STATUSLED_PIN D3 // optional feature
+#define RELAY_PIN D0 // Output Relay heat
+#define PWM_OUT D8 // Output PWM Pump
+#define ONE_WIRE_BUS D4 // One-Wire Temperature Sensor
+#define BUTTON_DOWN_PIN D5 // Buttons
+#define BUTTON_UP_PIN D6 // Buttons
+#define BUTTON_SELECT_PIN D7 // Buttons
 
-// Output Relay heat
-#define RELAY_PIN D0
-
-// Output PWM Pump
-#define PWM_OUT D8
-
-// One-Wire Temperature Sensor
-#define ONE_WIRE_BUS D4
-
-// Buttons
-#define BUTTON_DOWN_PIN D5
-#define BUTTON_UP_PIN D6
-#define BUTTON_SELECT_PIN D7
-
+// ************************************************
 //------- Button values Settings -------
+// ************************************************
 #define BUTTON_DOWN 0x04
 #define BUTTON_UP 0x02
 #define BUTTON_SELECT 0x01
+uint8_t readButtons();
 
-
+// ************************************************
+//------- WIFI MQTT -------------------------------
+// ************************************************
 WiFiClient espClient;
 PubSubClient client(espClient);
 boolean offlineMode = false; // defines if we operate online or offline
 boolean statusWifi = false;
 boolean statusMQTT = false;
-
-long lastSent = 0;   // timestamp last MQTT message published
-long lastReceived = 0;
+boolean setup_wifi();
+boolean reconnect();
+void callback(char* topic, byte* payload, unsigned int length);
+unsigned long lastSent = millis();   // timestamp last MQTT message published
+const unsigned long FREQ = 10000;
+unsigned long lastReceived = 0;
 char message_buff[100]; //Buffer for incomming MQTT messages
-
 
 // ************************************************
 // PID Variables and constants
 // ************************************************
 
-//Define Variables we'll be connecting to
 double Setpoint;
 double Input;
 double Output;
@@ -93,15 +81,18 @@ float pctchauf;
 // Initialize default StepSetPoint
 double stepset[] = {52, 63, 72, 78}; //temperature of steps
 long stepd[] = {12, 30, 40, 10}; //duration in minutes of steps
-
 volatile unsigned long onTime = 0;
+
+
 
 // pid tuning parameters
 double Kp;
 double Ki;
 double Kd;
 
+// ************************************************
 // EEPROM addresses for persisted data
+// ************************************************
 struct MyEEPROMStruct {
   double  eeSetpoint;
   double  eeKp;
@@ -109,6 +100,8 @@ struct MyEEPROMStruct {
   double  eeKd;
   byte  eePwm;
   } eepromVar1;
+void SaveParameters();
+
 
 
 //Specify the links and initial tuning parameters
@@ -120,7 +113,11 @@ unsigned long windowStartTime;
 
 // Ticker to manage time interrupt
 Ticker timer;
-
+void DoControl();
+void DriveOutput();
+void UpdateLedStatus();
+void heat();
+unsigned long publishOpstate(unsigned long timestamp, unsigned long freq);
 
 
 // ************************************************
@@ -132,6 +129,11 @@ double aTuneNoise=0.15; // according to temp precision
 unsigned int aTuneLookBack=300; // very slow process
 boolean tuning = false;
 PID_ATune aTune(&Input, &Output);
+void StartAutoTune();
+void FinishAutoTune();
+
+
+
 
 // ************************************************
 // DiSplay Variables and constants
@@ -145,6 +147,16 @@ unsigned long lastInput = 0; // last button press
 // ************************************************
 enum operatingState { OFF = 0, RUN, AUTO, SETP, TUNE_P, TUNE_I, TUNE_D, PWM};
 operatingState opState = OFF;
+
+void Off();
+void Run();
+void AutoControl();
+void Tune_Sp();
+void TuneP();
+void TuneI();
+void TuneD();
+void setPWM();
+
 
 // ************************************************
 // Sensor Variables and constants
@@ -162,145 +174,152 @@ byte pwm_value =0;
 boolean pwm_on =false; // if true then PWM can be set. false means it will be a simple on/off
 
 
-
 // ************************************************
-// Connexion WiFi
+// Setup and diSplay initial screen
 // ************************************************
-boolean setup_wifi()
+void setup()
 {
-delay(10);
-Serial.println();
-Serial.print("Connexion a ");
-Serial.println(wifi_ssid);
-WiFi.begin(wifi_ssid, wifi_password);
-int i=0;
+Serial.begin(115200);
 
-while ((WiFi.status() != WL_CONNECTED) && (i <= 5)) { //5 attempt
-  delay(500);
-  Serial.print(".");
-  i++;
-  }
+// Button init
+Serial.println("Initialize Buttons");
+pinMode(BUTTON_DOWN_PIN, INPUT);
+pinMode(BUTTON_UP_PIN, INPUT);
+pinMode(BUTTON_SELECT_PIN, INPUT);
 
-if (WiFi.status() == WL_CONNECTED)  {
-  Serial.println("");
-  Serial.println("Connexion WiFi etablie ");
-  Serial.print("=> Addresse IP : ");
-  Serial.print(WiFi.localIP());
+// LED status
+pinMode(STATUSLED_PIN, OUTPUT);
+digitalWrite(STATUSLED_PIN, HIGH); //High during init
 
-  //display IP
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(WHITE);
-  display.setCursor(0,0);
-  display.println("Connecte IP: ");
-  display.println(WiFi.localIP());
-  display.display();
-  delay(2000);
-  return true;
+// Initialize Relay Control
+Serial.println("Initialize Relay Control");
+pinMode(RELAY_PIN, OUTPUT);    // Output mode to drive relay
+digitalWrite(RELAY_PIN, LOW);  // make sure it is off to start
+
+// Initialize PWM output
+Serial.println("Initialize PWM output");
+pinMode(PWM_OUT, OUTPUT);
+if (pwm_on == true){
+  analogWrite(PWM_OUT, pwm_value);
   }
 else {
-  Serial.println("");
-  Serial.println("Echec Connexion WiFi");
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(WHITE);
-  display.setCursor(0,0);
-  display.println("Echec Connexion WiFi");
-  display.display();
-  delay(2000);
-  return false;
+  digitalWrite(PWM_OUT, LOW);  // simple onoff logic
   }
-}
 
-// ************************************************
-// reconnect MQTT
-// ************************************************
+// Start up the DS18B20 One Wire Temperature Sensor
+Serial.println("Start up the DS18B20");
+sensors.begin();
+if (!sensors.getAddress(tempSensor, 0)) {
+  display.println("Sensor Error");
+  }
+sensors.setResolution(tempSensor, 12);
+sensors.setWaitForConversion(false);
+display.display();
 
-boolean reconnect()
-{
-int i=0;
-boolean status;
-status = client.connected();
+// Interrupt Ticker each sec
+timer.attach_ms(1000, heat);
 
-if (offlineMode == true) {
-  return false;
-  } // on sort si on opere offline
+// Set up the initial (default) values for what is to be stored in EEPROM
+eepromVar1.eeSetpoint = 60;
+eepromVar1.eeKp = 850;
+eepromVar1.eeKi = 0.5;
+eepromVar1.eeKd = 0.1;
+eepromVar1.eePwm = 150;
 
-if (WiFi.status() == WL_CONNECTED) {
-  while ((!client.connected()) && (i <= 5)){
-    Serial.print("Connexion au serveur MQTT...");
-    if (client.connect("ESP8266Client")){
-      Serial.println("OK");
-      client.subscribe(cde_setpoint_topic);
-      client.subscribe(cde_pwm_topic);
-      client.subscribe(cde_Kp_topic);
-      client.subscribe(cde_Ki_topic);
-      client.subscribe(cde_Kd_topic);
-      client.subscribe(cde_sT1_topic);
-      client.subscribe(cde_sT2_topic);
-      client.subscribe(cde_sT3_topic);
-      client.subscribe(cde_sT4_topic);
-      client.subscribe(cde_sd1_topic);
-      client.subscribe(cde_sd2_topic);
-      client.subscribe(cde_sd3_topic);
-      client.subscribe(cde_sd4_topic);
-      status = true;
-      }
-    else {
-    display.clearDisplay();
-    display.setTextSize(1);
-    display.setTextColor(WHITE);
-    display.setCursor(0,0);
-    display.println("Perte Com MQTT - reconnecte");
-    display.display();
-    Serial.print("KO, erreur : ");
-    Serial.print(client.state());
-    Serial.println(" On attend 5 secondes avant de recommencer");
-    delay(5000);
-    status = false;
-    }
-  i++;
-    }
+Serial.println("Read eeprom");
+EEPROM.begin(sizeof(MyEEPROMStruct));
+if(EEPROM.percentUsed()!=0) {
+  EEPROM.get(0, eepromVar1);
+  Serial.println("EEPROM has data from a previous run.");
+  Serial.print(EEPROM.percentUsed());
+  Serial.println("% of ESP flash space currently used");
   }
 else {
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(WHITE);
-  display.setCursor(0,0);
-  display.println("Perte Com WiFi - reconnecte");
-  display.display();
-  statusWifi = setup_wifi();
-  status = false;
+  Serial.println("EEPROM size changed - EEPROM data zeroed - commit() to make permanent");
   }
-return status;
+
+// Assign current variables from stored values
+Setpoint = eepromVar1.eeSetpoint;
+Kp = eepromVar1.eeKp;
+Ki = eepromVar1.eeKi;
+Kd = eepromVar1.eeKd;
+pwm_value = eepromVar1.eePwm;
+
+// Initialize PID setup
+myPID.SetTunings(Kp,Ki,Kd);
+myPID.SetSampleTime(5000); // Origine 1000 change 5000
+myPID.SetOutputLimits(0, WindowSize);
+
+// Initialize LCD DiSplay
+Serial.println("Initialize LCD DiSplay");
+display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  // initialize with the I2C addr 0x3C (for the 64x48)
+display.clearDisplay();
+display.setRotation(2);
+display.setTextSize(1);
+display.setTextColor(WHITE);
+display.setCursor(0,0);
+display.println("init...");
+display.display();
+
+// Initialize Connexion
+statusWifi = setup_wifi();
+client.setServer(mqtt_server, 1883);
+client.setCallback(callback);
+
+// End setup
+Serial.println("End Set up");
+display.clearDisplay();
+display.setCursor(0,0);
+display.println("OFF");
+display.display();
+
 }
 
+
+
 // ************************************************
-// Save any parameter changes to EEPROM
+// Main Control Loop
+//
+// All state changes pass through here
 // ************************************************
-void SaveParameters()
+void loop()
 {
-Serial.println("EEPROM");
-EEPROM.get(0, eepromVar1);
-if ((eepromVar1.eeSetpoint != Setpoint) | (eepromVar1.eeKp != Kp) | (eepromVar1.eeKi != Ki) | (eepromVar1.eeKd != Kd) | (eepromVar1.eePwm != pwm_value)) {
-  Serial.println("Changement de parametre");
-  eepromVar1.eeSetpoint = Setpoint;
-  eepromVar1.eeKp = Kp;
-  eepromVar1.eeKi = Ki;
-  eepromVar1.eeKd = Kd;
-  eepromVar1.eePwm = pwm_value;
-  // write the data to EEPROM - ignoring anything that might be there already (re-flash is guaranteed)
-  boolean ok1 = EEPROM.commitReset();
-  Serial.println((ok1) ? "Commit (Reset) OK" : "Commit failed");
+statusMQTT = reconnect(); // try to reconnect MQTT
+client.loop();
 
-  // set the EEPROM data ready for writing
-  EEPROM.put(0, eepromVar1);
+// wait for button release before changing state
 
-  // write the data to EEPROM
-  boolean ok = EEPROM.commit();
-  Serial.println((ok) ? "Commit OK" : "Commit failed");
+while(readButtons() != 0) {} // wait for button press
+
+switch (opState){
+  case OFF:
+  Off();
+  break;
+  case RUN:
+  Run();
+  break;
+  case AUTO:
+  AutoControl();
+  break;
+  case SETP:
+  Tune_Sp();
+  break;
+  case TUNE_P:
+  TuneP();
+  break;
+  case TUNE_I:
+  TuneI();
+  break;
+  case TUNE_D:
+  TuneD();
+  break;
+  case PWM:
+  setPWM();
+  break;
   }
 }
+
+//********************************************************************************************************************************
 
 // ************************************************
 // Start the Auto-Tuning cycle
@@ -419,14 +438,7 @@ void heat()
 UpdateLedStatus();
 // report to  MQTT
 if (statusMQTT == true) {
-    dtostrf(Input, 4, 2, message_buff);
-    client.publish(temperature_topic, message_buff, true);
-    dtostrf(Setpoint, 4, 2, message_buff);
-    client.publish(setpoint_topic, message_buff, true);
-    sprintf(message_buff, "%d", pwm_value);
-    dtostrf(pctchauf, 6, 2, message_buff);
-    client.publish(pctchauf_topic, message_buff, true);
-    client.loop(); 
+    lastSent = publishOpstate(lastSent, FREQ);
     }
 
 if (opState == OFF){
@@ -515,7 +527,7 @@ while(true){
 
   if (statusMQTT == true) {
     client.publish(opState_topic, "OFF", true);
-    client.loop();
+    lastSent = publishOpstate(lastSent, FREQ);
     display.println("OFF Onl");
     }
   else  {
@@ -564,14 +576,7 @@ while(true){
   display.setTextSize(1);
 
   if (statusMQTT == true) {
-    client.publish(opState_topic, "RUN", true);
-    dtostrf(Kp, 8, 2, message_buff);
-    client.publish(Kp_topic, message_buff, true);
-    dtostrf(Ki, 8, 2, message_buff);
-    client.publish(Ki_topic, message_buff, true);
-    dtostrf(Kd, 8, 2, message_buff);
-    client.publish(Kd_topic, message_buff, true);
-    client.loop();
+    lastSent = publishOpstate(lastSent, FREQ);
     display.println("RUN  Onl");
     }
   else  {
@@ -621,10 +626,10 @@ delay(1000);
 
 Setpoint = StepSetPoint; // Update set point
 myPID.SetTunings(Kp,Ki,Kd);
-
+int minutesStep;
 unsigned long startTime = millis(); // Start timer
 unsigned long endTime = startTime + StepTimeMin * 60000;
-int minutes;
+
 
 uint8_t buttons = 0;
 
@@ -633,7 +638,7 @@ while(millis() <= endTime) {
 
   if (buttons & BUTTON_SELECT){ // Skip step and go to next
     delay(200);
-    minutes = 0;
+    minutesStep = 0;
     return;
     }
   if (buttons & BUTTON_UP){ // extend 1 min
@@ -655,18 +660,18 @@ while(millis() <= endTime) {
     return;
     }
 
-  minutes = (endTime - millis())/60000+1;
+  minutesStep = (endTime - millis())/60000+1;
 
   statusMQTT = reconnect();
   display.clearDisplay();
   display.setCursor(0, 0);
   display.setTextSize(1);
   if (statusMQTT == true) {
-    sprintf(message_buff, "%d", minutes);
+    sprintf(message_buff, "%d", minutesStep);
     client.publish(timerStep_topic, message_buff, true);
     sprintf(message_buff, "%d", Step+1);
     client.publish(autoStep_topic, message_buff, true);
-    client.loop();
+    lastSent = publishOpstate(lastSent, FREQ);
     display.println("Auto Onl");
     }
   else {
@@ -676,7 +681,7 @@ while(millis() <= endTime) {
   display.print("STEP: ");
   display.println(Step+1);
   display.print("min: ");
-  display.println(minutes);
+  display.println(minutesStep);
   display.print("Sp: ");
   display.println(Setpoint);
   display.print("In: ");
@@ -727,25 +732,7 @@ while(true){
 
   if (statusMQTT == true) {
     client.publish(opState_topic, "AUTO", true);
-    sprintf(message_buff, "%d", pwm_value);
-    client.publish(pwm_topic, message_buff, true);
-    dtostrf(stepset[0], 4, 2, message_buff);
-    client.publish(sT1_topic, message_buff, true);
-    dtostrf(stepset[1], 4, 2, message_buff);
-    client.publish(sT2_topic, message_buff, true);
-    dtostrf(stepset[2], 4, 2, message_buff);
-    client.publish(sT3_topic, message_buff, true);
-    dtostrf(stepset[3], 4, 2, message_buff);
-    client.publish(sT4_topic, message_buff, true);
-    sprintf(message_buff, "%d", stepd[0]);
-    client.publish(sd1_topic, message_buff, true);
-    sprintf(message_buff, "%d", stepd[1]);
-    client.publish(sd2_topic, message_buff, true);
-    sprintf(message_buff, "%d", stepd[2]);
-    client.publish(sd3_topic, message_buff, true);
-    sprintf(message_buff, "%d", stepd[3]);
-    client.publish(sd4_topic, message_buff, true);
-    client.loop();
+    lastSent = publishOpstate(lastSent, FREQ);
     display.println("AUTO Onl");
     }
   else  {
@@ -1013,13 +1000,117 @@ while(true){
 
 
 
+// ************************************************
+// Connexion WiFi
+// ************************************************
+boolean setup_wifi()
+{
+delay(10);
+Serial.println();
+Serial.print("Connexion a ");
+Serial.println(wifi_ssid);
+WiFi.begin(wifi_ssid, wifi_password);
+int i=0;
 
+while ((WiFi.status() != WL_CONNECTED) && (i <= 5)) { //5 attempt
+  delay(500);
+  Serial.print(".");
+  i++;
+  }
 
+if (WiFi.status() == WL_CONNECTED)  {
+  Serial.println("");
+  Serial.println("Connexion WiFi etablie ");
+  Serial.print("=> Addresse IP : ");
+  Serial.print(WiFi.localIP());
 
+  //display IP
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.setCursor(0,0);
+  display.println("Connecte IP: ");
+  display.println(WiFi.localIP());
+  display.display();
+  delay(2000);
+  return true;
+  }
+else {
+  Serial.println("");
+  Serial.println("Echec Connexion WiFi");
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.setCursor(0,0);
+  display.println("Echec Connexion WiFi");
+  display.display();
+  delay(2000);
+  return false;
+  }
+}
 
+// ************************************************
+// reconnect MQTT
+// ************************************************
 
+boolean reconnect()
+{
+int i=0;
+boolean status;
+status = client.connected();
 
+if (offlineMode == true) {
+  return false;
+  } // on sort si on opere offline
 
+if (WiFi.status() == WL_CONNECTED) {
+  while ((!client.connected()) && (i <= 5)){
+    Serial.print("Connexion au serveur MQTT...");
+    if (client.connect("ESP8266Client")){
+      Serial.println("OK");
+      client.subscribe(cde_setpoint_topic);
+      client.subscribe(cde_pwm_topic);
+      client.subscribe(cde_Kp_topic);
+      client.subscribe(cde_Ki_topic);
+      client.subscribe(cde_Kd_topic);
+      client.subscribe(cde_sT1_topic);
+      client.subscribe(cde_sT2_topic);
+      client.subscribe(cde_sT3_topic);
+      client.subscribe(cde_sT4_topic);
+      client.subscribe(cde_sd1_topic);
+      client.subscribe(cde_sd2_topic);
+      client.subscribe(cde_sd3_topic);
+      client.subscribe(cde_sd4_topic);
+      status = true;
+      }
+    else {
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(WHITE);
+    display.setCursor(0,0);
+    display.println("Perte Com MQTT - reconnecte");
+    display.display();
+    Serial.print("KO, erreur : ");
+    Serial.print(client.state());
+    Serial.println(" On attend 5 secondes avant de recommencer");
+    delay(5000);
+    status = false;
+    }
+  i++;
+    }
+  }
+else {
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.setCursor(0,0);
+  display.println("Perte Com WiFi - reconnecte");
+  display.display();
+  statusWifi = setup_wifi();
+  status = false;
+  }
+return status;
+}
 
 // ************************************************
 // Callback MQTT
@@ -1129,146 +1220,73 @@ s = strstr(topic, cde_sd4_topic);
 }
 
 // ************************************************
-// Setup and diSplay initial screen
+// Save any parameter changes to EEPROM
 // ************************************************
-void setup()
+void SaveParameters()
 {
-Serial.begin(115200);
+Serial.println("EEPROM");
+EEPROM.get(0, eepromVar1);
+if ((eepromVar1.eeSetpoint != Setpoint) | (eepromVar1.eeKp != Kp) | (eepromVar1.eeKi != Ki) | (eepromVar1.eeKd != Kd) | (eepromVar1.eePwm != pwm_value)) {
+  Serial.println("Changement de parametre");
+  eepromVar1.eeSetpoint = Setpoint;
+  eepromVar1.eeKp = Kp;
+  eepromVar1.eeKi = Ki;
+  eepromVar1.eeKd = Kd;
+  eepromVar1.eePwm = pwm_value;
+  // write the data to EEPROM - ignoring anything that might be there already (re-flash is guaranteed)
+  boolean ok1 = EEPROM.commitReset();
+  Serial.println((ok1) ? "Commit (Reset) OK" : "Commit failed");
 
-// Button init
-Serial.println("Initialize Buttons");
-pinMode(BUTTON_DOWN_PIN, INPUT);
-pinMode(BUTTON_UP_PIN, INPUT);
-pinMode(BUTTON_SELECT_PIN, INPUT);
+  // set the EEPROM data ready for writing
+  EEPROM.put(0, eepromVar1);
 
-// LED status
-pinMode(STATUSLED_PIN, OUTPUT);
-digitalWrite(STATUSLED_PIN, HIGH); //High during init
-
-// Initialize Relay Control
-Serial.println("Initialize Relay Control");
-pinMode(RELAY_PIN, OUTPUT);    // Output mode to drive relay
-digitalWrite(RELAY_PIN, LOW);  // make sure it is off to start
-
-// Initialize PWM output
-Serial.println("Initialize PWM output");
-pinMode(PWM_OUT, OUTPUT);
-if (pwm_on == true){
-  analogWrite(PWM_OUT, pwm_value);
+  // write the data to EEPROM
+  boolean ok = EEPROM.commit();
+  Serial.println((ok) ? "Commit OK" : "Commit failed");
   }
-else {
-  digitalWrite(PWM_OUT, LOW);  // simple onoff logic
-  }
-
-// Start up the DS18B20 One Wire Temperature Sensor
-Serial.println("Start up the DS18B20");
-sensors.begin();
-if (!sensors.getAddress(tempSensor, 0)) {
-  display.println("Sensor Error");
-  }
-sensors.setResolution(tempSensor, 12);
-sensors.setWaitForConversion(false);
-display.display();
-
-// Interrupt Ticker each sec
-timer.attach_ms(1000, heat);
-
-// Set up the initial (default) values for what is to be stored in EEPROM
-eepromVar1.eeSetpoint = 60;
-eepromVar1.eeKp = 850;
-eepromVar1.eeKi = 0.5;
-eepromVar1.eeKd = 0.1;
-eepromVar1.eePwm = 150;
-
-Serial.println("Read eeprom");
-EEPROM.begin(sizeof(MyEEPROMStruct));
-if(EEPROM.percentUsed()!=0) {
-  EEPROM.get(0, eepromVar1);
-  Serial.println("EEPROM has data from a previous run.");
-  Serial.print(EEPROM.percentUsed());
-  Serial.println("% of ESP flash space currently used");
-  }
-else {
-  Serial.println("EEPROM size changed - EEPROM data zeroed - commit() to make permanent");
-  }
-
-// Assign current variables from stored values
-Setpoint = eepromVar1.eeSetpoint;
-Kp = eepromVar1.eeKp;
-Ki = eepromVar1.eeKi;
-Kd = eepromVar1.eeKd;
-pwm_value = eepromVar1.eePwm;
-
-// Initialize PID setup
-myPID.SetTunings(Kp,Ki,Kd);
-myPID.SetSampleTime(5000); // Origine 1000 change 5000
-myPID.SetOutputLimits(0, WindowSize);
-
-// Initialize LCD DiSplay
-Serial.println("Initialize LCD DiSplay");
-display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  // initialize with the I2C addr 0x3C (for the 64x48)
-display.clearDisplay();
-display.setRotation(2);
-display.setTextSize(1);
-display.setTextColor(WHITE);
-display.setCursor(0,0);
-display.println("init...");
-display.display();
-
-// Initialize Connexion
-statusWifi = setup_wifi();
-client.setServer(mqtt_server, 1883);
-client.setCallback(callback);
-
-// End setup
-Serial.println("End Set up");
-display.clearDisplay();
-display.setCursor(0,0);
-display.println("OFF");
-display.display();
-
 }
 
 
-
 // ************************************************
-// Main Control Loop
-//
-// All state changes pass through here
+// Publish status
 // ************************************************
-void loop()
+unsigned long publishOpstate(unsigned long timestamp, unsigned long freq)
 {
-statusMQTT = reconnect(); // try to reconnect MQTT
-client.loop();
-
-// wait for button release before changing state
-
-while(readButtons() != 0) {} // wait for button press
-
-switch (opState){
-  case OFF:
-  Off();
-  break;
-  case RUN:
-  Run();
-  break;
-  case AUTO:
-  AutoControl();
-  break;
-  case SETP:
-  Tune_Sp();
-  break;
-  case TUNE_P:
-  TuneP();
-  break;
-  case TUNE_I:
-  TuneI();
-  break;
-  case TUNE_D:
-  TuneD();
-  break;
-  case PWM:
-  setPWM();
-  break;
+  if (millis() > timestamp + freq)
+  {
+    dtostrf(Input, 4, 2, message_buff);
+    client.publish(temperature_topic, message_buff, true);
+    dtostrf(Setpoint, 4, 2, message_buff);
+    client.publish(setpoint_topic, message_buff, true);
+    sprintf(message_buff, "%d", pwm_value);
+    dtostrf(pctchauf, 6, 2, message_buff);
+    client.publish(pctchauf_topic, message_buff, true);
+    sprintf(message_buff, "%d", pwm_value);
+    client.publish(pwm_topic, message_buff, true);
+    dtostrf(stepset[0], 4, 2, message_buff);
+    client.publish(sT1_topic, message_buff, true);
+    dtostrf(stepset[1], 4, 2, message_buff);
+    client.publish(sT2_topic, message_buff, true);
+    dtostrf(stepset[2], 4, 2, message_buff);
+    client.publish(sT3_topic, message_buff, true);
+    dtostrf(stepset[3], 4, 2, message_buff);
+    client.publish(sT4_topic, message_buff, true);
+    sprintf(message_buff, "%d", stepd[0]);
+    client.publish(sd1_topic, message_buff, true);
+    sprintf(message_buff, "%d", stepd[1]);
+    client.publish(sd2_topic, message_buff, true);
+    sprintf(message_buff, "%d", stepd[2]);
+    client.publish(sd3_topic, message_buff, true);
+    sprintf(message_buff, "%d", stepd[3]);
+    client.publish(sd4_topic, message_buff, true);
+    dtostrf(Kp, 8, 2, message_buff);
+    client.publish(Kp_topic, message_buff, true);
+    dtostrf(Ki, 8, 2, message_buff);
+    client.publish(Ki_topic, message_buff, true);
+    dtostrf(Kd, 8, 2, message_buff);
+    client.publish(Kd_topic, message_buff, true);
+    
+    client.loop();
+    lastSent = millis();
   }
 }
