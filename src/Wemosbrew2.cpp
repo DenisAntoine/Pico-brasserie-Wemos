@@ -14,6 +14,8 @@
 // wifi et MQTT
 #include "ESP8266WiFi.h"
 #include "PubSubClient.h"
+#include <ArduinoOTA.h>
+
 // PID Library
 #include "PID_v1.h"
 #include "PID_AutoTune_v0.h"
@@ -65,7 +67,7 @@ boolean setup_wifi();
 boolean reconnect();
 void callback(char* topic, byte* payload, unsigned int length);
 unsigned long lastSent = millis();   // timestamp last MQTT message published
-const unsigned long FREQ = 10000;
+const unsigned long FREQ = 15000;
 unsigned long lastReceived = 0;
 char message_buff[100]; //Buffer for incomming MQTT messages
 
@@ -180,6 +182,17 @@ boolean pwm_on =false; // if true then PWM can be set. false means it will be a 
 void setup()
 {
 Serial.begin(115200);
+
+//OTA
+	// Hostname defaults to esp8266-[ChipID]
+	ArduinoOTA.setHostname("ESPTEST");
+	ArduinoOTA.begin();
+	// Fin OTA 
+	Serial.println("");
+	Serial.print("code modifie par OTA");
+
+
+
 
 // Button init
 Serial.println("Initialize Buttons");
@@ -576,6 +589,7 @@ while(true){
   display.setTextSize(1);
 
   if (statusMQTT == true) {
+    client.publish(opState_topic, "RUN", true);
     lastSent = publishOpstate(lastSent, FREQ);
     display.println("RUN  Onl");
     }
@@ -667,6 +681,7 @@ while(millis() <= endTime) {
   display.setCursor(0, 0);
   display.setTextSize(1);
   if (statusMQTT == true) {
+    client.publish(opState_topic, "AUTO", true);
     sprintf(message_buff, "%d", minutesStep);
     client.publish(timerStep_topic, message_buff, true);
     sprintf(message_buff, "%d", Step+1);
@@ -1252,6 +1267,9 @@ if ((eepromVar1.eeSetpoint != Setpoint) | (eepromVar1.eeKp != Kp) | (eepromVar1.
 // ************************************************
 unsigned long publishOpstate(unsigned long timestamp, unsigned long freq)
 {
+  // Surveillance des demandes de mise à jour en OTA
+  ArduinoOTA.handle();
+  
   unsigned long returntime = timestamp;
   
   if (millis() > timestamp + freq)

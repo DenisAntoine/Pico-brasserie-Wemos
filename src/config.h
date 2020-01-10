@@ -4,8 +4,8 @@
 // ************************************************
 // Com WIFI and MQTT
 // ************************************************
-#define wifi_ssid "xxxxxxxx" //Modify as needed
-#define wifi_password "xxxxxxxxx" //Modify as needed
+#define wifi_ssid "TP-LINK_24A4" //Modify as needed
+#define wifi_password "08111692" //Modify as needed
 #define mqtt_server "192.168.1.24" //Modify as needed
 
 
