@@ -14,7 +14,7 @@
 // wifi et MQTT
 #include "ESP8266WiFi.h"
 #include "PubSubClient.h"
-#include <ArduinoOTA.h>
+//#include <ArduinoOTA.h>
 
 // PID Library
 #include "PID_v1.h"
@@ -67,7 +67,7 @@ boolean setup_wifi();
 boolean reconnect();
 void callback(char* topic, byte* payload, unsigned int length);
 unsigned long lastSent = millis();   // timestamp last MQTT message published
-const unsigned long FREQ = 15000;
+const unsigned long FREQ = 10000;
 unsigned long lastReceived = 0;
 char message_buff[100]; //Buffer for incomming MQTT messages
 
@@ -183,6 +183,7 @@ void setup()
 {
 Serial.begin(115200);
 
+/*
 //OTA
 	// Hostname defaults to esp8266-[ChipID]
 	ArduinoOTA.setHostname("ESPTEST");
@@ -190,7 +191,7 @@ Serial.begin(115200);
 	// Fin OTA 
 	Serial.println("");
 	Serial.print("code modifie par OTA");
-
+*/
 
 
 
@@ -298,7 +299,7 @@ display.display();
 void loop()
 {
 statusMQTT = reconnect(); // try to reconnect MQTT
-client.loop();
+//client.loop();
 
 // wait for button release before changing state
 
@@ -1268,7 +1269,7 @@ if ((eepromVar1.eeSetpoint != Setpoint) | (eepromVar1.eeKp != Kp) | (eepromVar1.
 unsigned long publishOpstate(unsigned long timestamp, unsigned long freq)
 {
   // Surveillance des demandes de mise à jour en OTA
-  ArduinoOTA.handle();
+  //ArduinoOTA.handle();
   
   unsigned long returntime = timestamp;
   
