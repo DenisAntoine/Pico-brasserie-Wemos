@@ -13,6 +13,11 @@
 
 // wifi et MQTT
 #include "ESP8266WiFi.h"
+//needed for library
+#include <DNSServer.h>
+#include <ESP8266WebServer.h>
+#include <WiFiManager.h>         //https://github.com/tzapu/WiFiManager
+
 #include "PubSubClient.h"
 //#include <ArduinoOTA.h>
 
@@ -64,13 +69,13 @@ boolean offlineMode = false; // defines if we operate online or offline
 boolean statusWifi = false;
 boolean statusMQTT = false;
 boolean setup_wifi();
-boolean reconnect();
+void reconnect();
 unsigned long lastCom = millis();
-char* currentOpstate;
+
 
 void callback(char* topic, byte* payload, unsigned int length);
 unsigned long lastSent = millis();   // timestamp last MQTT message published
-const unsigned long FREQ = 10000;
+const unsigned long FREQ = 15000;
 unsigned long lastReceived = 0;
 char message_buff[100]; //Buffer for incomming MQTT messages
 
@@ -186,18 +191,6 @@ void setup()
 {
 Serial.begin(115200);
 
-/*
-//OTA
-	// Hostname defaults to esp8266-[ChipID]
-	ArduinoOTA.setHostname("ESPTEST");
-	ArduinoOTA.begin();
-	// Fin OTA 
-	Serial.println("");
-	Serial.print("code modifie par OTA");
-*/
-
-
-
 // Button init
 Serial.println("Initialize Buttons");
 pinMode(BUTTON_DOWN_PIN, INPUT);
@@ -233,9 +226,6 @@ sensors.setResolution(tempSensor, 12);
 sensors.setWaitForConversion(false);
 display.display();
 
-// Interrupt Ticker each sec
-timer.attach_ms(10000, heat);
-
 // Set up the initial (default) values for what is to be stored in EEPROM
 eepromVar1.eeSetpoint = 60;
 eepromVar1.eeKp = 850;
@@ -243,7 +233,11 @@ eepromVar1.eeKi = 0.5;
 eepromVar1.eeKd = 0.1;
 eepromVar1.eePwm = 150;
 
+
+
+
 Serial.println("Read eeprom");
+delay(10000);
 EEPROM.begin(sizeof(MyEEPROMStruct));
 if(EEPROM.percentUsed()!=0) {
   EEPROM.get(0, eepromVar1);
@@ -279,11 +273,29 @@ display.println("init...");
 display.display();
 
 // Initialize Connexion
-statusWifi = setup_wifi();
+//statusWifi = setup_wifi();
+WiFiManager wifiManager;
+wifiManager.setTimeout(180);
+if(!wifiManager.autoConnect("AutoConnectAP")) {
+    Serial.println("failed to connect and hit timeout");
+    delay(3000);
+    ESP.reset();
+    delay(5000);
+  } 
+
+Serial.println("connected...yeey :)");
+
+
+
 client.setServer(mqtt_server, 1883);
 client.setCallback(callback);
+reconnect();
 delay(10000);
-statusMQTT = reconnect();
+
+
+// Interrupt Ticker each sec
+Serial.println("attache timer");
+timer.attach_ms(1000, heat);
 
 // End setup
 Serial.println("End Set up");
@@ -303,38 +315,31 @@ display.display();
 // ************************************************
 void loop()
 {
-//statusMQTT = reconnect(); // try to reconnect MQTT
-//client.loop();
-
-// wait for button release before changing state
-
-while(readButtons() != 0) {} // wait for button press
-
 switch (opState){
-  case OFF:
-  Off();
-  break;
-  case RUN:
-  Run();
-  break;
-  case AUTO:
-  AutoControl();
-  break;
-  case SETP:
-  Tune_Sp();
-  break;
-  case TUNE_P:
-  TuneP();
-  break;
-  case TUNE_I:
-  TuneI();
-  break;
-  case TUNE_D:
-  TuneD();
-  break;
-  case PWM:
-  setPWM();
-  break;
+    case OFF:
+    Off();
+    break;
+    case RUN:
+    Run();
+    break;
+    case AUTO:
+    AutoControl();
+    break;
+    case SETP:
+    Tune_Sp();
+    break;
+    case TUNE_P:
+    TuneP();
+    break;
+    case TUNE_I:
+    TuneI();
+    break;
+    case TUNE_D:
+    TuneD();
+    break;
+    case PWM:
+    setPWM();
+    break;
   }
 }
 
@@ -456,9 +461,11 @@ void heat()
 {
 UpdateLedStatus();
 // report to  MQTT
-if (statusMQTT == true) {
-    lastSent = publishOpstate(lastSent, FREQ);
-    }
+//if (!client.connected()){
+//  reconnect();
+//  }
+lastSent = publishOpstate(lastSent, FREQ);
+
 
 if (opState == OFF){
   digitalWrite(RELAY_PIN, LOW);  // make sure relay is off
@@ -483,14 +490,16 @@ else{
 uint8_t readButtons()
 {
 uint8_t but = 0;
-//Serial.println("Attente bouton : ");
-delay(100);
+Serial.println("Attente bouton : ");
+delay(10);
 if (digitalRead(BUTTON_DOWN_PIN) != 1) {
   but += BUTTON_DOWN;
   }
+delay(10);
 if (digitalRead(BUTTON_UP_PIN) != 1) {
   but += BUTTON_UP;
   }
+delay(10);
 if (digitalRead(BUTTON_SELECT_PIN) != 1) {
   but += BUTTON_SELECT;
   }
@@ -516,8 +525,13 @@ myPID.SetMode(MANUAL);
 digitalWrite(RELAY_PIN, LOW);  // make sure it is off
 
 uint8_t buttons = 0;
+unsigned long buttonT = millis();
+
 while(true){
-  buttons = readButtons();
+  if (millis()>buttonT + 100){
+    buttons = readButtons();
+    buttonT = millis();
+  }
   if (buttons & BUTTON_DOWN) { // DOWN to reconnect
     offlineMode = false;
     opState = OFF; // remains OFF
@@ -539,12 +553,9 @@ while(true){
     return;
     }
 
-  statusMQTT = reconnect(); // test and reconnect MQTT if down
   display.clearDisplay();
   display.setCursor(0, 0);
   display.setTextSize(1);
-  
-  lastSent = publishOpstate(lastSent, FREQ);
   
   if (statusMQTT == true) {
     display.println("OFF Onl");
@@ -569,34 +580,45 @@ void Run()
 {
 Serial.println("Mode RUN");
 //delay(100);
-currentOpstate = "RUN";
+uint8_t buttons = 0;
+unsigned long recon = millis();
+unsigned long buttonT = millis();
+
 SaveParameters();
 myPID.SetTunings(Kp,Ki,Kd);
 
-uint8_t buttons = 0;
+timer.detach();
+reconnect();
+timer.attach_ms(1000, heat);
+
+
 while(true){
-  buttons = readButtons();
-  if ((buttons & BUTTON_DOWN)
-  && (abs(Input - Setpoint) < 0.5)){  // Should be at steady-state to start autotune
-    StartAutoTune();
+  if (millis()>recon + 60000){
+    timer.detach(); //On met en pause le temps de se recon
+    reconnect();
+    timer.attach_ms(1000, heat);
+    recon = millis();
+  }
+  if (millis()>buttonT + 200){
+    buttons = readButtons();
+    buttonT = millis();
+    if ((buttons & BUTTON_DOWN)
+      && (abs(Input - Setpoint) < 0.5)){  // Should be at steady-state to start autotune
+      StartAutoTune();
     }
-
-  if (buttons & BUTTON_UP){
-    opState = OFF;
-    return;
+    if (buttons & BUTTON_UP){
+      opState = OFF;
+      return;
+      }
+    if (buttons & BUTTON_SELECT){
+      opState = SETP;
+      return;
     }
+  }
 
-  if (buttons & BUTTON_SELECT){
-    opState = SETP;
-    return;
-    }
-
-  //statusMQTT = reconnect(); // test and reconnect MQTT if down
   display.clearDisplay();
   display.setCursor(0, 0);
   display.setTextSize(1);
-
-  lastSent = publishOpstate(lastSent, FREQ);
 
   display.print("Sp: ");
   display.println(Setpoint);
@@ -677,11 +699,10 @@ while(millis() <= endTime) {
 
   minutesStep = (endTime - millis())/60000+1;
 
-  statusMQTT = reconnect();
   display.clearDisplay();
   display.setCursor(0, 0);
   display.setTextSize(1);
-  lastSent = publishOpstate(lastSent, FREQ);
+  //lastSent = publishOpstate(lastSent, FREQ);
   if (statusMQTT == true) {
     sprintf(message_buff, "%d", minutesStep);
     client.publish(timerStep_topic, message_buff, true);
@@ -741,11 +762,10 @@ while(true){
     return;
     }
 
-  statusMQTT = reconnect(); // test and reconnect MQTT if down
   display.clearDisplay();
   display.setCursor(0, 0);
   display.setTextSize(1);
-  lastSent = publishOpstate(lastSent, FREQ);
+  //lastSent = publishOpstate(lastSent, FREQ);
   
   if (statusMQTT == true) {
     
@@ -1026,6 +1046,9 @@ Serial.println();
 Serial.print("Connexion a ");
 Serial.println(wifi_ssid);
 WiFi.begin(wifi_ssid, wifi_password);
+Serial.println("Wifi begin ");
+delay(10000);
+
 int i=0;
 
 while ((WiFi.status() != WL_CONNECTED) && (i <= 10)) { //10 attempt
@@ -1069,68 +1092,46 @@ else {
 // reconnect MQTT
 // ************************************************
 
-boolean reconnect()
+void reconnect()
 {
-int i=0;
-boolean status = statusMQTT;
-
-if (millis()> lastCom+ 30000) { //1 min avant de reconnecter
-  status = client.connected();
-  if (offlineMode == true) {
-  return false;
-  } // on sort si on opere offline
-
-  if (status == false){
-    if (WiFi.status() == WL_CONNECTED) {
-      while ((!client.connected()) && (i <= 5)){
-        Serial.print("Connexion au serveur MQTT...");
-        if (client.connect("ESP8266Client")){
-          Serial.println("OK");
-          client.subscribe(cde_setpoint_topic);
-          client.subscribe(cde_pwm_topic);
-          client.subscribe(cde_Kp_topic);
-          client.subscribe(cde_Ki_topic);
-          client.subscribe(cde_Kd_topic);
-          client.subscribe(cde_sT1_topic);
-          client.subscribe(cde_sT2_topic);
-          client.subscribe(cde_sT3_topic);
-          client.subscribe(cde_sT4_topic);
-          client.subscribe(cde_sd1_topic);
-          client.subscribe(cde_sd2_topic);
-          client.subscribe(cde_sd3_topic);
-          client.subscribe(cde_sd4_topic);
-          lastCom = millis();
-          status = true;
-        }
-        else {
-          display.clearDisplay();
-          display.setTextSize(1);
-          display.setTextColor(WHITE);
-          display.setCursor(0,0);
-          display.println("Perte Com MQTT - reconnecte");
-          display.display();
-          Serial.print("KO, erreur : ");
-          Serial.print(client.state());
-          Serial.println(" On attend 5 secondes avant de recommencer");
-          delay(5000);
-          status = false;
-        }
-      i++;
-      }
+Serial.println("Reconnecte");
+while (!client.connected()) {
+    Serial.print("Attempting MQTT connection...");
+    // Attempt to connect
+    if (client.connect("arduinoClient")) {
+      Serial.println("connected");
+      // Once connected, publish an announcement...
+      client.publish("outTopic","hello world");
+      // ... and resubscribe
+      client.subscribe(cde_setpoint_topic);
+      client.subscribe(cde_pwm_topic);
+      client.subscribe(cde_Kp_topic);
+      client.subscribe(cde_Ki_topic);
+      client.subscribe(cde_Kd_topic);
+      client.subscribe(cde_sT1_topic);
+      client.subscribe(cde_sT2_topic);
+      client.subscribe(cde_sT3_topic);
+      client.subscribe(cde_sT4_topic);
+      client.subscribe(cde_sd1_topic);
+      client.subscribe(cde_sd2_topic);
+      client.subscribe(cde_sd3_topic);
+      client.subscribe(cde_sd4_topic);
+      client.loop();
+    } else {
+      Serial.print("failed, rc=");
+      Serial.print(client.state());
+      Serial.println(" try again in 5 seconds");
+      display.clearDisplay();
+      display.setTextSize(1);
+      display.setTextColor(WHITE);
+      display.setCursor(0,0);
+      display.println("Perte Com MQTT - reconnecte");
+      display.display();
+      
+      // Wait 5 seconds before retrying
+      delay(5000);
     }
   }
-  else {
-    display.clearDisplay();
-    display.setTextSize(1);
-    display.setTextColor(WHITE);
-    display.setCursor(0,0);
-    display.println("Perte Com WiFi - reconnecte");
-    display.display();
-    statusWifi = setup_wifi();
-    status = false;
-    }
-  }
-return status;
 }
 
 // ************************************************
@@ -1281,6 +1282,9 @@ unsigned long publishOpstate(unsigned long timestamp, unsigned long freq)
   //client.loop();
   if (millis() > timestamp + freq)
   {
+    //if (!client.connected()) {
+    //reconnect();
+    //}
     switch (opState){
       case OFF:
       client.publish(opState_topic, "OFF", true);
@@ -1293,18 +1297,20 @@ unsigned long publishOpstate(unsigned long timestamp, unsigned long freq)
       break;
       }
         
-    //client.publish(opState_topic, currentOpstate, true);
+    
     dtostrf(Input, 4, 2, message_buff);
     client.publish(temperature_topic, message_buff, true);
+    Serial.print(temperature_topic);
+    Serial.println(message_buff);
     dtostrf(Setpoint, 4, 2, message_buff);
     client.publish(setpoint_topic, message_buff, true);
-    /*sprintf(message_buff, "%d", pwm_value);
+    sprintf(message_buff, "%d", pwm_value);
     dtostrf(pctchauf, 6, 2, message_buff);
     client.publish(pctchauf_topic, message_buff, true);
     sprintf(message_buff, "%d", pwm_value);
     client.publish(pwm_topic, message_buff, true);
     dtostrf(stepset[0], 4, 2, message_buff);
-    client.publish(sT1_topic, message_buff, true);
+    /*client.publish(sT1_topic, message_buff, true);
     dtostrf(stepset[1], 4, 2, message_buff);
     client.publish(sT2_topic, message_buff, true);
     dtostrf(stepset[2], 4, 2, message_buff);
