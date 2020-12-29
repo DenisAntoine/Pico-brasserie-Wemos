@@ -68,7 +68,7 @@ PubSubClient client(espClient);
 boolean offlineMode = false; // defines if we operate online or offline
 boolean statusWifi = false;
 boolean statusMQTT = false;
-boolean setup_wifi();
+//boolean setup_wifi();
 void reconnect();
 unsigned long lastCom = millis();
 
@@ -490,16 +490,16 @@ else{
 uint8_t readButtons()
 {
 uint8_t but = 0;
-Serial.println("Attente bouton : ");
+//Serial.println("Attente bouton : ");
 delay(10);
 if (digitalRead(BUTTON_DOWN_PIN) != 1) {
   but += BUTTON_DOWN;
   }
-delay(10);
+//delay(10);
 if (digitalRead(BUTTON_UP_PIN) != 1) {
   but += BUTTON_UP;
   }
-delay(10);
+//delay(10);
 if (digitalRead(BUTTON_SELECT_PIN) != 1) {
   but += BUTTON_SELECT;
   }
@@ -841,9 +841,9 @@ while(true){
 // ************************************************
 void TuneP()
 {
-Serial.println("Mode Reglage Kp - Select pour Ki");
+Serial.print("Mode Reglage Kp =");
 delay(100);
-
+Serial.println(Kp);
 uint8_t buttons = 0;
 while(true){
   buttons = readButtons();
@@ -856,10 +856,14 @@ while(true){
     }
   if (buttons & BUTTON_UP){
     Kp += increment;
+    Serial.print("Reglage Kp =");
+    Serial.println(Kp);
     delay(200);
     }
   if (buttons & BUTTON_DOWN){
     Kp -= increment;
+    Serial.print("Reglage Kp =");
+    Serial.println(Kp);
     delay(200);
     }
   if ((millis() - lastInput) > 10000){  // return to RUN after 10 seconds idle
@@ -877,6 +881,7 @@ while(true){
   display.display();
   DoControl();
   }
+
 }
 
 // ************************************************
@@ -1039,7 +1044,7 @@ while(true){
 // ************************************************
 // Connexion WiFi
 // ************************************************
-boolean setup_wifi()
+/*boolean setup_wifi()
 {
 delay(10);
 Serial.println();
@@ -1086,7 +1091,7 @@ else {
   delay(2000);
   return false;
   }
-}
+}*/
 
 // ************************************************
 // reconnect MQTT
@@ -1098,24 +1103,37 @@ Serial.println("Reconnecte");
 while (!client.connected()) {
     Serial.print("Attempting MQTT connection...");
     // Attempt to connect
-    if (client.connect("arduinoClient")) {
+    if (client.connect("picoclient")) {
       Serial.println("connected");
       // Once connected, publish an announcement...
-      client.publish("outTopic","hello world");
+      // client.publish("outTopic","hello world");
       // ... and resubscribe
-      client.subscribe(cde_setpoint_topic);
+      //client.subscribe(cde_setpoint_topic);
+      delay(100);
       client.subscribe(cde_pwm_topic);
+      delay(100);
       client.subscribe(cde_Kp_topic);
+      delay(100);
       client.subscribe(cde_Ki_topic);
+      delay(100);
       client.subscribe(cde_Kd_topic);
+      delay(100);
       client.subscribe(cde_sT1_topic);
+      delay(100);
       client.subscribe(cde_sT2_topic);
+      delay(100);
       client.subscribe(cde_sT3_topic);
+      delay(100);
       client.subscribe(cde_sT4_topic);
+      delay(100);
       client.subscribe(cde_sd1_topic);
+      delay(100);
       client.subscribe(cde_sd2_topic);
+      delay(100);
       client.subscribe(cde_sd3_topic);
+      delay(100);
       client.subscribe(cde_sd4_topic);
+      delay(100);
       client.loop();
     } else {
       Serial.print("failed, rc=");
@@ -1310,7 +1328,7 @@ unsigned long publishOpstate(unsigned long timestamp, unsigned long freq)
     sprintf(message_buff, "%d", pwm_value);
     client.publish(pwm_topic, message_buff, true);
     dtostrf(stepset[0], 4, 2, message_buff);
-    /*client.publish(sT1_topic, message_buff, true);
+    client.publish(sT1_topic, message_buff, true);
     dtostrf(stepset[1], 4, 2, message_buff);
     client.publish(sT2_topic, message_buff, true);
     dtostrf(stepset[2], 4, 2, message_buff);
@@ -1330,7 +1348,7 @@ unsigned long publishOpstate(unsigned long timestamp, unsigned long freq)
     dtostrf(Ki, 8, 2, message_buff);
     client.publish(Ki_topic, message_buff, true);
     dtostrf(Kd, 8, 2, message_buff);
-    client.publish(Kd_topic, message_buff, true);*/
+    client.publish(Kd_topic, message_buff, true);
     
     client.loop();
     Serial.println("Client Loop");
