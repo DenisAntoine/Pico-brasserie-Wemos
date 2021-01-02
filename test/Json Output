@@ -1,0 +1,40 @@
+{
+  "opState" : "RUN",
+   "temperature" : 83.52,
+   "setpoint" : 90.00,
+   "pctchauf" : 85.23,
+   "pwm" : 1,
+    "StepT1" : 62.32,
+    "StepT2" : 72.56,
+    "StepT3" : 78.25,
+    "StepT4" : 102.23,
+    "Stepd1" : 10,
+    "Stepd2" : 45,
+    "Stepd3" : 25,
+    "Stepd4" : 10,
+    "Kp" : 2045.23,
+    "Ki" : 12.23,
+    "Kd" : 0.23,
+    "autoStep" : 2,
+    "timerStep" : 23
+}
+
+DynamicJsonDocument doc(128);
+ou
+
+StaticJsonDocument<256> doc;
+
+
+
+doc["opState"] = "RUN";
+doc["temperature"] = 83.52;
+doc["setpoint"] = 90;
+doc["pctchauf"] = 85.23;
+doc["pwm"] = 1;
+doc["Kp"] = 2045.23;
+doc["Ki"] = 12.23;
+doc["Kd"] = 0.23;
+
+char buffer[256];
+size_t n = serializeJson(doc, buffer);
+client.publish("outTopic", buffer, n);

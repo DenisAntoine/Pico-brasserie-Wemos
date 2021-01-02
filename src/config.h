@@ -14,7 +14,7 @@
 
 
 // topic MQTT publish
-#define opState_topic "biere/opState"
+/*#define opState_topic "biere/opState"
 #define autoStep_topic "biere/autoStep"
 #define timerStep_topic "biere/timerStep"
 #define temperature_topic "biere/temperature"
@@ -31,10 +31,12 @@
 #define sd4_topic "biere/Stepd4"
 #define Kp_topic "biere/Kp"
 #define Ki_topic "biere/Ki"
-#define Kd_topic "biere/Kd"
+#define Kd_topic "biere/Kd"*/
+
+#define publish_topic "biere/json"
 
 // topic MQTT subscribe
-#define cde_setpoint_topic "biere/cdeSetpoint"
+/*#define cde_setpoint_topic "biere/cdeSetpoint"
 #define cde_pwm_topic "biere/cdePwm"
 #define cde_Kp_topic "biere/cdeKp"
 #define cde_Ki_topic "biere/cdeKi"
@@ -46,4 +48,6 @@
 #define cde_sd1_topic "biere/cdeStepd1"
 #define cde_sd2_topic "biere/cdeStepd2"
 #define cde_sd3_topic "biere/cdeStepd3"
-#define cde_sd4_topic "biere/cdeStepd4"
+#define cde_sd4_topic "biere/cdeStepd4"*/
+
+#define subscribe_topic "cdebiere/cdejson"

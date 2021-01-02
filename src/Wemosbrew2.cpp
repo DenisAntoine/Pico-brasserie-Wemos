@@ -38,6 +38,7 @@
 // config file for Wifi and MQTT
 #include "config.h"
 
+#include <ArduinoJson.h>
 
 // ************************************************
 // Pin definitions
@@ -77,7 +78,8 @@ void callback(char* topic, byte* payload, unsigned int length);
 unsigned long lastSent = millis();   // timestamp last MQTT message published
 const unsigned long FREQ = 15000;
 unsigned long lastReceived = 0;
-char message_buff[100]; //Buffer for incomming MQTT messages
+char message_buff[256]; //Buffer for incomming MQTT messages
+StaticJsonDocument<256> doc; //document µJson pour MQTT
 
 // ************************************************
 // PID Variables and constants
@@ -237,7 +239,7 @@ eepromVar1.eePwm = 150;
 
 
 Serial.println("Read eeprom");
-delay(10000);
+delay(5000);
 EEPROM.begin(sizeof(MyEEPROMStruct));
 if(EEPROM.percentUsed()!=0) {
   EEPROM.get(0, eepromVar1);
@@ -289,8 +291,11 @@ Serial.println("connected...yeey :)");
 
 client.setServer(mqtt_server, 1883);
 client.setCallback(callback);
-reconnect();
-delay(10000);
+//reconnect();
+delay(5000);
+client.subscribe(subscribe_topic);
+delay(5000);
+client.loop();
 
 
 // Interrupt Ticker each sec
@@ -703,7 +708,7 @@ while(millis() <= endTime) {
   display.setCursor(0, 0);
   display.setTextSize(1);
   //lastSent = publishOpstate(lastSent, FREQ);
-  if (statusMQTT == true) {
+  /*if (statusMQTT == true) {
     sprintf(message_buff, "%d", minutesStep);
     client.publish(timerStep_topic, message_buff, true);
     sprintf(message_buff, "%d", Step+1);
@@ -713,7 +718,7 @@ while(millis() <= endTime) {
     }
   else {
     display.println("Auto Offl");
-    }
+    }*/
 
   display.print("STEP: ");
   display.println(Step+1);
@@ -1109,7 +1114,7 @@ while (!client.connected()) {
       // client.publish("outTopic","hello world");
       // ... and resubscribe
       //client.subscribe(cde_setpoint_topic);
-      delay(100);
+      /*delay(100);
       client.subscribe(cde_pwm_topic);
       delay(100);
       client.subscribe(cde_Kp_topic);
@@ -1132,8 +1137,10 @@ while (!client.connected()) {
       delay(100);
       client.subscribe(cde_sd3_topic);
       delay(100);
-      client.subscribe(cde_sd4_topic);
-      delay(100);
+      client.subscribe(cde_sd4_topic);*/
+      
+      client.subscribe(subscribe_topic);
+      delay(500);
       client.loop();
     } else {
       Serial.print("failed, rc=");
@@ -1158,12 +1165,85 @@ while (!client.connected()) {
 void callback(char* topic, byte* payload, unsigned int length)
 {
 unsigned int i;
-char *s;
+//char *s;
+StaticJsonDocument<256> doc;
 Serial.print("Message arrived [");
 Serial.print(topic);
-Serial.print("] ");
+Serial.println("] ");
 
-for (i = 0; i < length; i++) {
+deserializeJson(doc, payload, length);
+
+if(doc.containsKey("ST")) {
+  Setpoint = doc["ST"];
+  Serial.print("Setpoint :");
+  Serial.println(Setpoint);
+}
+
+if(doc.containsKey("Kp")) {// Yes!}
+  Kp = doc["Kp"];
+  Serial.print("Kp :");
+  Serial.println(Kp);
+}
+
+if(doc.containsKey("Ki")) {// Yes!}
+  Ki = doc["Ki"];
+  Serial.print("Ki :");
+  Serial.println(Ki);
+}
+
+if(doc.containsKey("Kd")) {// Yes!}
+  Kd = doc["Kd"];
+  Serial.print("Kd :");
+  Serial.println(Kd);
+}
+
+if(doc.containsKey("ST1")) {// Yes!}
+  stepset[0] = doc["ST1"];
+  Serial.print("Step T1 :");
+  Serial.println(stepset[0]);
+}
+if(doc.containsKey("ST2")) {// Yes!}
+  stepset[1] = doc["ST2"];
+  Serial.print("Step T2 :");
+  Serial.println(stepset[1]);
+}
+if(doc.containsKey("ST3")) {// Yes!}
+  stepset[2] = doc["ST3"];
+  Serial.print("Step T3 :");
+  Serial.println(stepset[2]);
+}
+if(doc.containsKey("ST4")) {// Yes!}
+  stepset[3] = doc["ST4"];
+  Serial.print("Step T4 :");
+  Serial.println(stepset[3]);
+}
+
+if(doc.containsKey("Sd1")) {// Yes!}
+  stepd[0] = doc["Sd1"];
+  Serial.print("Step d1 :");
+  Serial.println(stepd[0]);
+}
+if(doc.containsKey("Sd2")) {// Yes!}
+  stepd[1] = doc["Sd2"];
+  Serial.print("Step d2 :");
+  Serial.println(stepd[1]);
+}
+if(doc.containsKey("Sd3")) {// Yes!}
+  stepd[2] = doc["Sd3"];
+  Serial.print("Step d3 :");
+  Serial.println(stepd[2]);
+}
+if(doc.containsKey("Sd4")) {// Yes!}
+  stepd[3] = doc["Sd4"];
+  Serial.print("Step d4 :");
+  Serial.println(stepd[3]);
+}
+
+
+
+
+
+/*for (i = 0; i < length; i++) {
   message_buff[i] = payload[i];
   Serial.print((char)payload[i]);
   }
@@ -1256,7 +1336,8 @@ s = strstr(topic, cde_sd4_topic);
       stepd[3] = strtod(p_payload, NULL);
       Serial.print("Stepd4 :");
       Serial.println(stepd[3]);
-      }
+      }*/
+
 }
 
 // ************************************************
@@ -1300,9 +1381,7 @@ unsigned long publishOpstate(unsigned long timestamp, unsigned long freq)
   //client.loop();
   if (millis() > timestamp + freq)
   {
-    //if (!client.connected()) {
-    //reconnect();
-    //}
+    /*
     switch (opState){
       case OFF:
       client.publish(opState_topic, "OFF", true);
@@ -1322,7 +1401,7 @@ unsigned long publishOpstate(unsigned long timestamp, unsigned long freq)
     Serial.println(message_buff);
     dtostrf(Setpoint, 4, 2, message_buff);
     client.publish(setpoint_topic, message_buff, true);
-    sprintf(message_buff, "%d", pwm_value);
+    
     dtostrf(pctchauf, 6, 2, message_buff);
     client.publish(pctchauf_topic, message_buff, true);
     sprintf(message_buff, "%d", pwm_value);
@@ -1349,7 +1428,30 @@ unsigned long publishOpstate(unsigned long timestamp, unsigned long freq)
     client.publish(Ki_topic, message_buff, true);
     dtostrf(Kd, 8, 2, message_buff);
     client.publish(Kd_topic, message_buff, true);
+   */
     
+    switch (opState){
+      case OFF:
+      doc["opState"] = "OFF";
+      break;
+      case RUN:
+      doc["opState"] = "RUN";
+      break;
+      case AUTO:
+      doc["opState"] = "AUTO";
+      break;
+      }
+     
+    doc["temperature"] = Input;
+    doc["setpoint"] = Setpoint;
+    doc["pctchauf"] = pctchauf;
+    doc["pwm"] = pwm_value;
+    doc["Kp"] = Kp;
+    doc["Ki"] = Ki;
+    doc["Kd"] = Kd;
+    
+    size_t n = serializeJson(doc, message_buff);
+    client.publish(publish_topic, message_buff, n);
     client.loop();
     Serial.println("Client Loop");
     returntime = millis();

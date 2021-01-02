@@ -1,0 +1,33 @@
+{
+   "ST" : 90.00,
+   "Kp" : 2045.23,
+   "Ki" : 12.23,
+   "Kd" : 0.23,
+   "ST1" : 62.32,
+   "ST2" : 72.56,
+   "ST3" : 78.25,
+   "ST4" : 102.23,
+   "Sd1" : 10,
+   "Sd2" : 45,
+   "Sd3" : 25,
+   "Sd4" : 10
+}
+
+
+
+void callback(char* topic, byte* payload, unsigned int length) {
+  StaticJsonDocument<256> doc;
+  deserializeJson(doc, payload, length);
+
+int ST = doc["ST"]; // 90
+float Kp = doc["Kp"]; // 2045.23
+float Ki = doc["Ki"]; // 12.23
+float Kd = doc["Kd"]; // 0.23
+float ST1 = doc["ST1"]; // 62.32
+float ST2 = doc["ST2"]; // 72.56
+float ST3 = doc["ST3"]; // 78.25
+float ST4 = doc["ST4"]; // 102.23
+int Sd1 = doc["Sd1"]; // 10
+int Sd2 = doc["Sd2"]; // 45
+int Sd3 = doc["Sd3"]; // 25
+int Sd4 = doc["Sd4"]; // 10

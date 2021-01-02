@@ -1,16 +1,19 @@
+//
+// !!! WARNING !!! AUTO-GENERATED FILE!
+// PLEASE DO NOT MODIFY IT AND USE "platformio.ini":
+// https://docs.platformio.org/page/projectconf/section_env_build.html#build-flags
+//
 {
     "configurations": [
         {
-            "name": "!!! WARNING !!! AUTO-GENERATED FILE, PLEASE DO NOT MODIFY IT AND USE https://docs.platformio.org/page/projectconf/section_env_build.html#build-flags"
-        },
-        {
-            "name": "Linux",
+            "name": "PlatformIO",
             "includePath": [
                 "/media/antoine/data/PlatformIO/Projects/Pico-brasserie-Wemos/include",
                 "/media/antoine/data/PlatformIO/Projects/Pico-brasserie-Wemos/src",
                 "/home/antoine/.platformio/lib/WifiManager_ID567",
                 "/home/antoine/.platformio/packages/framework-arduinoespressif8266/libraries/ESP8266WebServer/src",
                 "/home/antoine/.platformio/packages/framework-arduinoespressif8266/libraries/DNSServer/src",
+                "/home/antoine/.platformio/lib/ArduinoJson_ID64/src",
                 "/home/antoine/.platformio/packages/framework-arduinoespressif8266/libraries/Ticker/src",
                 "/home/antoine/.platformio/lib/PubSubClient_ID89/src",
                 "/home/antoine/.platformio/lib/PID-AutoTune_ID3",
@@ -31,7 +34,6 @@
                 "/home/antoine/.platformio/lib/Adafruit ADS1X15_ID342",
                 "/home/antoine/.platformio/lib/Adafruit LED Backpack Library_ID25",
                 "/home/antoine/.platformio/lib/Adafruit NeoPixel_ID28",
-                "/home/antoine/.platformio/lib/ArduinoJson_ID64/src",
                 "/home/antoine/.platformio/lib/DFRobotDFPlayerMini_ID1308",
                 "/home/antoine/.platformio/lib/ESP8266TrueRandom_ID1477",
                 "/home/antoine/.platformio/lib/MD_MAX72XX_ID5631/src",
@@ -72,6 +74,7 @@
                     "/home/antoine/.platformio/lib/WifiManager_ID567",
                     "/home/antoine/.platformio/packages/framework-arduinoespressif8266/libraries/ESP8266WebServer/src",
                     "/home/antoine/.platformio/packages/framework-arduinoespressif8266/libraries/DNSServer/src",
+                    "/home/antoine/.platformio/lib/ArduinoJson_ID64/src",
                     "/home/antoine/.platformio/packages/framework-arduinoespressif8266/libraries/Ticker/src",
                     "/home/antoine/.platformio/lib/PubSubClient_ID89/src",
                     "/home/antoine/.platformio/lib/PID-AutoTune_ID3",
@@ -92,7 +95,6 @@
                     "/home/antoine/.platformio/lib/Adafruit ADS1X15_ID342",
                     "/home/antoine/.platformio/lib/Adafruit LED Backpack Library_ID25",
                     "/home/antoine/.platformio/lib/Adafruit NeoPixel_ID28",
-                    "/home/antoine/.platformio/lib/ArduinoJson_ID64/src",
                     "/home/antoine/.platformio/lib/DFRobotDFPlayerMini_ID1308",
                     "/home/antoine/.platformio/lib/ESP8266TrueRandom_ID1477",
                     "/home/antoine/.platformio/lib/MD_MAX72XX_ID5631/src",
@@ -127,7 +129,7 @@
                 ]
             },
             "defines": [
-                "PLATFORMIO=50003",
+                "PLATFORMIO=50004",
                 "ESP8266",
                 "ARDUINO_ARCH_ESP8266",
                 "ARDUINO_ESP8266_WEMOS_D1MINI",
@@ -145,7 +147,6 @@
                 "VTABLES_IN_FLASH",
                 ""
             ],
-            "intelliSenseMode": "gcc-x64",
             "cStandard": "c99",
             "cppStandard": "c++11",
             "compilerPath": "/home/antoine/.platformio/packages/toolchain-xtensa/bin/xtensa-lx106-elf-gcc",
