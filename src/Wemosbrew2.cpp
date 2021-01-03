@@ -40,18 +40,6 @@
 
 #include <ArduinoJson.h>
 
-// ************************************************
-// Pin definitions
-// ************************************************
-
-#define OLED_RESET 0  // GPIO0
-#define STATUSLED_PIN D3 // optional feature
-#define RELAY_PIN D0 // Output Relay heat
-#define PWM_OUT D8 // Output PWM Pump
-#define ONE_WIRE_BUS D4 // One-Wire Temperature Sensor
-#define BUTTON_DOWN_PIN D5 // Buttons
-#define BUTTON_UP_PIN D6 // Buttons
-#define BUTTON_SELECT_PIN D7 // Buttons
 
 // ************************************************
 //------- Button values Settings -------
@@ -71,10 +59,10 @@ boolean statusWifi = false;
 boolean statusMQTT = false;
 //boolean setup_wifi();
 void reconnect();
-unsigned long lastCom = millis();
-
-
 void callback(char* topic, byte* payload, unsigned int length);
+
+
+
 unsigned long lastSent = millis();   // timestamp last MQTT message published
 const unsigned long FREQ = 15000;
 unsigned long lastReceived = 0;
@@ -89,6 +77,8 @@ double Setpoint;
 double Input;
 double Output;
 float pctchauf;
+int minutesStep =0;
+int cStep =0;
 
 // Initialize default StepSetPoint
 double stepset[] = {52, 63, 72, 78}; //temperature of steps
@@ -127,8 +117,8 @@ unsigned long windowStartTime;
 Ticker timer;
 void DoControl();
 void DriveOutput();
-void UpdateLedStatus();
 void heat();
+
 unsigned long publishOpstate(unsigned long timestamp, unsigned long freq);
 
 
@@ -286,17 +276,8 @@ if(!wifiManager.autoConnect("AutoConnectAP")) {
   } 
 
 Serial.println("connected...yeey :)");
-
-
-
 client.setServer(mqtt_server, 1883);
 client.setCallback(callback);
-//reconnect();
-delay(5000);
-client.subscribe(subscribe_topic);
-delay(5000);
-client.loop();
-
 
 // Interrupt Ticker each sec
 Serial.println("attache timer");
@@ -308,7 +289,7 @@ display.clearDisplay();
 display.setCursor(0,0);
 display.println("OFF");
 display.display();
-
+delay(100);
 }
 
 
@@ -444,48 +425,6 @@ else {
   }
 }
 
-// ************************************************
-// Update status LED
-// ************************************************
-void UpdateLedStatus()
-{
-if (abs(Input - Setpoint) < 1) {// Led on if at temp +- 1 deg
-  digitalWrite(STATUSLED_PIN, HIGH);
-  }
-else {
-  digitalWrite(STATUSLED_PIN, LOW);
-  }
-}
-
-
-
-// ************************************************
-// Timer Interrupt Handler
-// ************************************************
-void heat()
-{
-UpdateLedStatus();
-// report to  MQTT
-//if (!client.connected()){
-//  reconnect();
-//  }
-lastSent = publishOpstate(lastSent, FREQ);
-
-
-if (opState == OFF){
-  digitalWrite(RELAY_PIN, LOW);  // make sure relay is off
-  if (pwm_on == true){
-    analogWrite(PWM_OUT, 0); // switch off the pump
-    }
-  else {
-    digitalWrite(PWM_OUT, LOW);  // switch off the pump
-    }
-  }
-
-else{
-  DriveOutput(); // Pid regulation
-  }
-}
 
 
 
@@ -496,7 +435,7 @@ uint8_t readButtons()
 {
 uint8_t but = 0;
 //Serial.println("Attente bouton : ");
-delay(10);
+delay(50);
 if (digitalRead(BUTTON_DOWN_PIN) != 1) {
   but += BUTTON_DOWN;
   }
@@ -560,6 +499,7 @@ while(true){
     myPID.SetMode(AUTOMATIC);
     windowStartTime = millis();
     opState = RUN; // start control in RUN mode
+    delay(50);
     return;
     }
   if (buttons & BUTTON_SELECT){ // SELECT to auto steps
@@ -567,6 +507,7 @@ while(true){
     myPID.SetMode(AUTOMATIC);
     windowStartTime = millis();
     opState = AUTO; // start control in AUTO mode
+    delay(50);
     return;
     }
 
@@ -617,10 +558,12 @@ while(true){
     }
     if (buttons & BUTTON_UP){
       opState = OFF;
+      delay(50);
       return;
       }
     if (buttons & BUTTON_SELECT){
       opState = SETP;
+      delay(50);
       return;
     }
   }
@@ -668,16 +611,16 @@ void RunStep(int Step, double StepSetPoint, long StepTimeMin)
 {
 Serial.println("Step exec =");
 Serial.println(Step);
-delay(1000);
 
 Setpoint = StepSetPoint; // Update set point
 myPID.SetTunings(Kp,Ki,Kd);
-int minutesStep;
+
 unsigned long startTime = millis(); // Start timer
 unsigned long endTime = startTime + StepTimeMin * 60000;
 unsigned long recon = millis();
 
 uint8_t buttons = 0;
+cStep = Step;
 
 while(millis() <= endTime) {
   if (millis()>recon + 60000){
@@ -740,18 +683,19 @@ while(millis() <= endTime) {
 // ************************************************
 void AutoControl()
 {
-int step;
 Serial.println("Mode Autocontrole");
-
+int step;
 uint8_t buttons = 0;
 while(true){
   buttons = readButtons();
   if (buttons & BUTTON_UP) { // UP to OFF
     opState = OFF;
+    delay(50);
     return;
     }
 
   if (buttons & BUTTON_SELECT){ // Select to execute steps
+    delay(200);
     for (step = 0; step < 4; step++) { //loop sur 4 steps
       RunStep(step, stepset[step], stepd[step]);
       }
@@ -801,6 +745,7 @@ while(true){
   if (buttons & BUTTON_SELECT){
     SaveParameters();
     opState = TUNE_P;
+    delay(50);
     return;
     }
   if (buttons & BUTTON_UP){
@@ -813,6 +758,7 @@ while(true){
     }
   if ((millis() - lastInput) > 10000) {  // return to RUN after 10 seconds idle
     opState = RUN;
+    delay(50);
     return;
     }
   display.clearDisplay();
@@ -824,6 +770,7 @@ while(true){
   display.setTextSize(2);
   display.print(Setpoint);
   display.display();
+  delay(100);
   DoControl();
   }
 }
@@ -846,6 +793,7 @@ while(true){
   if (buttons & BUTTON_SELECT){
     SaveParameters();
     opState = TUNE_I;
+    delay(50);
     return;
     }
   if (buttons & BUTTON_UP){
@@ -873,6 +821,7 @@ while(true){
   display.setCursor(0,20);
   display.print(Kp);
   display.display();
+  delay(100);
   DoControl();
   }
 
@@ -896,6 +845,7 @@ while(true){
   if (buttons & BUTTON_SELECT){
     SaveParameters();
     opState = TUNE_D;
+    delay(50);
     return;
     }
   if (buttons & BUTTON_UP){
@@ -910,7 +860,7 @@ while(true){
     opState = RUN;
     return;
     }
-  delay(100);
+  
   display.clearDisplay();
   display.setCursor(0, 0);
   display.setTextSize(1);
@@ -920,6 +870,7 @@ while(true){
   display.setCursor(0,20);
   display.print(Ki);
   display.display();
+  delay(100);
   DoControl();
   }
 }
@@ -941,6 +892,7 @@ while(true){
   if (buttons & BUTTON_SELECT){
     SaveParameters();
     opState = PWM;
+    delay(50);
     return;
     }
   if (buttons & BUTTON_UP){
@@ -953,9 +905,10 @@ while(true){
     }
   if ((millis() - lastInput) > 10000){  // return to RUN after 10 seconds idle
     opState = RUN;
+    delay(50);
     return;
     }
-  delay(100);
+  
   display.clearDisplay();
   display.setCursor(0, 0);
   display.setTextSize(1);
@@ -965,6 +918,7 @@ while(true){
   display.setCursor(0,20);
   display.print(Kd);
   display.display();
+  delay(100);
   DoControl();
   }
 }
@@ -976,7 +930,6 @@ while(true){
 void setPWM()
 {
 Serial.println("Mode Reglage PWM - Select pour RUN");
-delay(100);
 
 uint8_t buttons = 0;
 while(true){
@@ -986,6 +939,7 @@ while(true){
   if (buttons & BUTTON_SELECT){
     SaveParameters();
     opState = RUN;
+    delay(50);
     return;
     }
   if (buttons & BUTTON_UP){
@@ -1004,8 +958,7 @@ while(true){
     else{
       pwm_value = LOW;
       }
-
-  delay(200);
+    delay(200);
   }
   if ((millis() - lastInput) > 10000){  // return to RUN after 10 seconds idle
     opState = RUN;
@@ -1028,64 +981,10 @@ while(true){
   display.setCursor(0,30);
   display.print(pwm_value);
   display.display();
+  delay(100);
   DoControl();
   }
 }
-
-
-
-
-// ************************************************
-// Connexion WiFi
-// ************************************************
-/*boolean setup_wifi()
-{
-delay(10);
-Serial.println();
-Serial.print("Connexion a ");
-Serial.println(wifi_ssid);
-WiFi.begin(wifi_ssid, wifi_password);
-Serial.println("Wifi begin ");
-delay(10000);
-
-int i=0;
-
-while ((WiFi.status() != WL_CONNECTED) && (i <= 10)) { //10 attempt
-  delay(1500);
-  Serial.print(".");
-  i++;
-  }
-
-if (WiFi.status() == WL_CONNECTED)  {
-  Serial.println("");
-  Serial.println("Connexion WiFi etablie ");
-  Serial.print("=> Addresse IP : ");
-  Serial.print(WiFi.localIP());
-
-  //display IP
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(WHITE);
-  display.setCursor(0,0);
-  display.println("Connecte IP: ");
-  display.println(WiFi.localIP());
-  display.display();
-  delay(2000);
-  return true;
-  }
-else {
-  Serial.println("");
-  Serial.println("Echec Connexion WiFi");
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(WHITE);
-  display.setCursor(0,0);
-  display.println("Echec Connexion WiFi");
-  display.display();
-  delay(2000);
-  return false;
-  }
-}*/
 
 // ************************************************
 // reconnect MQTT
@@ -1128,178 +1027,78 @@ while (!client.connected()) {
 // ************************************************
 void callback(char* topic, byte* payload, unsigned int length)
 {
-StaticJsonDocument<256> doc;
-Serial.print("Message arrived [");
-Serial.print(topic);
-Serial.println("] ");
+  StaticJsonDocument<256> doc;
+  Serial.print("Message arrived [");
+  Serial.print(topic);
+  Serial.println("] ");
 
-deserializeJson(doc, payload, length);
+  deserializeJson(doc, payload, length);
 
-if(doc.containsKey("ST")) {
-  Setpoint = doc["ST"];
-  Serial.print("Setpoint :");
-  Serial.println(Setpoint);
-}
-
-if(doc.containsKey("Kp")) {// Yes!}
-  Kp = doc["Kp"];
-  Serial.print("Kp :");
-  Serial.println(Kp);
-}
-
-if(doc.containsKey("Ki")) {// Yes!}
-  Ki = doc["Ki"];
-  Serial.print("Ki :");
-  Serial.println(Ki);
-}
-
-if(doc.containsKey("Kd")) {// Yes!}
-  Kd = doc["Kd"];
-  Serial.print("Kd :");
-  Serial.println(Kd);
-}
-
-if(doc.containsKey("ST1")) {// Yes!}
-  stepset[0] = doc["ST1"];
-  Serial.print("Step T1 :");
-  Serial.println(stepset[0]);
-}
-if(doc.containsKey("ST2")) {// Yes!}
-  stepset[1] = doc["ST2"];
-  Serial.print("Step T2 :");
-  Serial.println(stepset[1]);
-}
-if(doc.containsKey("ST3")) {// Yes!}
-  stepset[2] = doc["ST3"];
-  Serial.print("Step T3 :");
-  Serial.println(stepset[2]);
-}
-if(doc.containsKey("ST4")) {// Yes!}
-  stepset[3] = doc["ST4"];
-  Serial.print("Step T4 :");
-  Serial.println(stepset[3]);
-}
-
-if(doc.containsKey("Sd1")) {// Yes!}
-  stepd[0] = doc["Sd1"];
-  Serial.print("Step d1 :");
-  Serial.println(stepd[0]);
-}
-if(doc.containsKey("Sd2")) {// Yes!}
-  stepd[1] = doc["Sd2"];
-  Serial.print("Step d2 :");
-  Serial.println(stepd[1]);
-}
-if(doc.containsKey("Sd3")) {// Yes!}
-  stepd[2] = doc["Sd3"];
-  Serial.print("Step d3 :");
-  Serial.println(stepd[2]);
-}
-if(doc.containsKey("Sd4")) {// Yes!}
-  stepd[3] = doc["Sd4"];
-  Serial.print("Step d4 :");
-  Serial.println(stepd[3]);
-}
-
-
-
-
-
-/*for (i = 0; i < length; i++) {
-  message_buff[i] = payload[i];
-  Serial.print((char)payload[i]);
-  }
-  Serial.println();
-  message_buff[i] = '\0';
-  const char *p_payload = message_buff;
-
-s = strstr(topic, cde_setpoint_topic);
-if (s != NULL){
-  Setpoint = strtod(p_payload, NULL);
-  Serial.print("Setpoint :");
-  Serial.println(Setpoint);
+  if(doc.containsKey("ST")) {
+    Setpoint = doc["ST"];
+    Serial.print("Setpoint :");
+    Serial.println(Setpoint);
   }
 
-s = strstr(topic, cde_Kd_topic);
-if (s != NULL){
-  Kd = strtod(p_payload, NULL);
-  Serial.print("Kd :");
-  Serial.println(Kd);
+  if(doc.containsKey("Kp")) {// Yes!}
+    Kp = doc["Kp"];
+    Serial.print("Kp :");
+    Serial.println(Kp);
   }
 
-s = strstr(topic, cde_Ki_topic);
-if (s != NULL){
-  Ki = strtod(p_payload, NULL);
-  Serial.print("Ki :");
-  Serial.println(Ki);
+  if(doc.containsKey("Ki")) {// Yes!}
+    Ki = doc["Ki"];
+    Serial.print("Ki :");
+    Serial.println(Ki);
   }
 
-s = strstr(topic, cde_Kp_topic);
-if (s != NULL){
-  Kp = strtod(p_payload, NULL);
-  Serial.print("Kp :");
-  Serial.println(Kp);
+  if(doc.containsKey("Kd")) {// Yes!}
+    Kd = doc["Kd"];
+    Serial.print("Kd :");
+    Serial.println(Kd);
   }
 
-s = strstr(topic, cde_pwm_topic);
-if (s != NULL){
-  pwm_value = (int)atof(p_payload);
-  Serial.print("PWM :");
-  Serial.println(pwm_value);
-  }
-
-s = strstr(topic, cde_sT1_topic);
-    if (s != NULL){
-    stepset[0] = strtod(p_payload, NULL);
-    Serial.print("StepT1 :");
+  if(doc.containsKey("ST1")) {// Yes!}
+    stepset[0] = doc["ST1"];
+    Serial.print("Step T1 :");
     Serial.println(stepset[0]);
-    }
-s = strstr(topic, cde_sd1_topic);
-    if (s != NULL){
-    stepd[0] = strtod(p_payload, NULL);
-    Serial.print("Stepd1 :");
+  }
+  if(doc.containsKey("ST2")) {// Yes!}
+    stepset[1] = doc["ST2"];
+    Serial.print("Step T2 :");
+    Serial.println(stepset[1]);
+  }
+  if(doc.containsKey("ST3")) {// Yes!}
+    stepset[2] = doc["ST3"];
+    Serial.print("Step T3 :");
+    Serial.println(stepset[2]);
+  }
+  if(doc.containsKey("ST4")) {// Yes!}
+    stepset[3] = doc["ST4"];
+    Serial.print("Step T4 :");
+    Serial.println(stepset[3]);
+  }
+
+  if(doc.containsKey("Sd1")) {// Yes!}
+    stepd[0] = doc["Sd1"];
+    Serial.print("Step d1 :");
     Serial.println(stepd[0]);
-    }
-
-s = strstr(topic, cde_sT2_topic);
-      if (s != NULL){
-      stepset[1] = strtod(p_payload, NULL);
-      Serial.print("StepT2 :");
-      Serial.println(stepset[1]);
-      }
-s = strstr(topic, cde_sd2_topic);
-    if (s != NULL){
-      stepd[1] = strtod(p_payload, NULL);
-      Serial.print("Stepd2 :");
-      Serial.println(stepd[1]);
-      }
-
-s = strstr(topic, cde_sT3_topic);
-    if (s != NULL){
-      stepset[2] = strtod(p_payload, NULL);
-      Serial.print("StepT3 :");
-      Serial.println(stepset[2]);
-      }
-s = strstr(topic, cde_sd3_topic);
-    if (s != NULL){
-      stepd[2] = strtod(p_payload, NULL);
-      Serial.print("Stepd3 :");
-      Serial.println(stepd[2]);
-      }
-
-s = strstr(topic, cde_sT4_topic);
-    if (s != NULL){
-      stepset[3] = strtod(p_payload, NULL);
-      Serial.print("StepT4 :");
-      Serial.println(stepset[3]);
-      }
-s = strstr(topic, cde_sd4_topic);
-    if (s != NULL){
-      stepd[3] = strtod(p_payload, NULL);
-      Serial.print("Stepd4 :");
-      Serial.println(stepd[3]);
-      }*/
-
+  }
+  if(doc.containsKey("Sd2")) {// Yes!}
+    stepd[1] = doc["Sd2"];
+    Serial.print("Step d2 :");
+    Serial.println(stepd[1]);
+  }
+  if(doc.containsKey("Sd3")) {// Yes!}
+    stepd[2] = doc["Sd3"];
+    Serial.print("Step d3 :");
+    Serial.println(stepd[2]);
+  }
+  if(doc.containsKey("Sd4")) {// Yes!}
+    stepd[3] = doc["Sd4"];
+    Serial.print("Step d4 :");
+    Serial.println(stepd[3]);
+  }
 }
 
 // ************************************************
@@ -1335,63 +1134,10 @@ if ((eepromVar1.eeSetpoint != Setpoint) | (eepromVar1.eeKp != Kp) | (eepromVar1.
 // ************************************************
 unsigned long publishOpstate(unsigned long timestamp, unsigned long freq)
 {
-  // Surveillance des demandes de mise à jour en OTA
-  //ArduinoOTA.handle();
-  
   unsigned long returntime = timestamp;
-  //Serial.println("Publish");
-  //client.loop();
+  
   if (millis() > timestamp + freq)
   {
-    /*
-    switch (opState){
-      case OFF:
-      client.publish(opState_topic, "OFF", true);
-      break;
-      case RUN:
-      client.publish(opState_topic, "RUN", true);
-      break;
-      case AUTO:
-      client.publish(opState_topic, "AUTO", true);
-      break;
-      }
-        
-    
-    dtostrf(Input, 4, 2, message_buff);
-    client.publish(temperature_topic, message_buff, true);
-    Serial.print(temperature_topic);
-    Serial.println(message_buff);
-    dtostrf(Setpoint, 4, 2, message_buff);
-    client.publish(setpoint_topic, message_buff, true);
-    
-    dtostrf(pctchauf, 6, 2, message_buff);
-    client.publish(pctchauf_topic, message_buff, true);
-    sprintf(message_buff, "%d", pwm_value);
-    client.publish(pwm_topic, message_buff, true);
-    dtostrf(stepset[0], 4, 2, message_buff);
-    client.publish(sT1_topic, message_buff, true);
-    dtostrf(stepset[1], 4, 2, message_buff);
-    client.publish(sT2_topic, message_buff, true);
-    dtostrf(stepset[2], 4, 2, message_buff);
-    client.publish(sT3_topic, message_buff, true);
-    dtostrf(stepset[3], 4, 2, message_buff);
-    client.publish(sT4_topic, message_buff, true);
-    sprintf(message_buff, "%lu", stepd[0]);
-    client.publish(sd1_topic, message_buff, true);
-    sprintf(message_buff, "%lu", stepd[1]);
-    client.publish(sd2_topic, message_buff, true);
-    sprintf(message_buff, "%lu", stepd[2]);
-    client.publish(sd3_topic, message_buff, true);
-    sprintf(message_buff, "%lu", stepd[3]);
-    client.publish(sd4_topic, message_buff, true);
-    dtostrf(Kp, 8, 2, message_buff);
-    client.publish(Kp_topic, message_buff, true);
-    dtostrf(Ki, 8, 2, message_buff);
-    client.publish(Ki_topic, message_buff, true);
-    dtostrf(Kd, 8, 2, message_buff);
-    client.publish(Kd_topic, message_buff, true);
-   */
-    
     switch (opState){
       case OFF:
       doc["opState"] = "OFF";
@@ -1402,7 +1148,23 @@ unsigned long publishOpstate(unsigned long timestamp, unsigned long freq)
       case AUTO:
       doc["opState"] = "AUTO";
       break;
+      case SETP:
+      doc["opState"] = "SETP";
+      break;
+      case TUNE_P:
+      doc["opState"] = "TuneP";
+      break;
+      case TUNE_I:
+      doc["opState"] = "TuneI";
+      break;
+      case TUNE_D:
+      doc["opState"] = "TuneD";
+      break;
+      case PWM:
+      doc["opState"] = "PWM";
+      break;
       }
+      
      
     doc["temperature"] = Input;
     doc["setpoint"] = Setpoint;
@@ -1411,6 +1173,8 @@ unsigned long publishOpstate(unsigned long timestamp, unsigned long freq)
     doc["Kp"] = Kp;
     doc["Ki"] = Ki;
     doc["Kd"] = Kd;
+    //doc["cStep"] = cStep;
+    //doc["cMin"] = minutesStep;
     
     size_t n = serializeJson(doc, message_buff);
     client.publish(publish_topic, message_buff, n);
@@ -1419,4 +1183,26 @@ unsigned long publishOpstate(unsigned long timestamp, unsigned long freq)
     returntime = millis();
   }
   return returntime;
+}
+
+// ************************************************
+// Timer Interrupt Handler
+// ************************************************
+void heat()
+{
+lastSent = publishOpstate(lastSent, FREQ);
+
+if (opState == OFF){
+  digitalWrite(RELAY_PIN, LOW);  // make sure relay is off
+  if (pwm_on == true){
+    analogWrite(PWM_OUT, 0); // switch off the pump
+    }
+  else {
+    digitalWrite(PWM_OUT, LOW);  // switch off the pump
+    }
+  }
+
+else{
+  DriveOutput(); // Pid regulation
+  }
 }
