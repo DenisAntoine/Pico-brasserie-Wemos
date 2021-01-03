@@ -500,11 +500,11 @@ delay(10);
 if (digitalRead(BUTTON_DOWN_PIN) != 1) {
   but += BUTTON_DOWN;
   }
-//delay(10);
+
 if (digitalRead(BUTTON_UP_PIN) != 1) {
   but += BUTTON_UP;
   }
-//delay(10);
+
 if (digitalRead(BUTTON_SELECT_PIN) != 1) {
   but += BUTTON_SELECT;
   }
@@ -527,15 +527,27 @@ void Off()
 {
 Serial.println("Mode Off");
 myPID.SetMode(MANUAL);
+// update temperature control
+Input = sensors.getTempC(tempSensor);
+sensors.requestTemperatures();
+
+
 digitalWrite(RELAY_PIN, LOW);  // make sure it is off
 
 uint8_t buttons = 0;
-unsigned long buttonT = millis();
+lastInput = millis();
+unsigned long recon = millis();
 
 while(true){
-  if (millis()>buttonT + 100){
+  if (millis()>recon + 60000){
+    timer.detach(); //On met en pause le temps de se recon
+    reconnect();
+    timer.attach_ms(1000, heat);
+    recon = millis();
+  }
+  
+  if (millis()>lastInput + 100){
     buttons = readButtons();
-    buttonT = millis();
   }
   if (buttons & BUTTON_DOWN) { // DOWN to reconnect
     offlineMode = false;
@@ -562,16 +574,9 @@ while(true){
   display.setCursor(0, 0);
   display.setTextSize(1);
   
-  if (statusMQTT == true) {
-    display.println("OFF Onl");
-    }
-  
-  else  {
-    display.println("OFF Offl");
-    offlineMode = true; // Switch to offline operation
-    display.print("Dwn > reconnect");
-    }
+  display.println("OFF");
   display.display();
+  delay(100);
   }
 }
 
@@ -584,15 +589,14 @@ while(true){
 void Run()
 {
 Serial.println("Mode RUN");
-//delay(100);
 uint8_t buttons = 0;
 unsigned long recon = millis();
 unsigned long buttonT = millis();
 
-SaveParameters();
-myPID.SetTunings(Kp,Ki,Kd);
 
 timer.detach();
+SaveParameters();
+myPID.SetTunings(Kp,Ki,Kd);
 reconnect();
 timer.attach_ms(1000, heat);
 
@@ -624,7 +628,7 @@ while(true){
   display.clearDisplay();
   display.setCursor(0, 0);
   display.setTextSize(1);
-
+  display.println("RUN");
   display.print("Sp: ");
   display.println(Setpoint);
   display.print("In: ");
@@ -671,11 +675,18 @@ myPID.SetTunings(Kp,Ki,Kd);
 int minutesStep;
 unsigned long startTime = millis(); // Start timer
 unsigned long endTime = startTime + StepTimeMin * 60000;
-
+unsigned long recon = millis();
 
 uint8_t buttons = 0;
 
 while(millis() <= endTime) {
+  if (millis()>recon + 60000){
+    timer.detach(); //On met en pause le temps de se recon
+    reconnect();
+    timer.attach_ms(1000, heat);
+    recon = millis();
+  }
+  
   buttons = readButtons();
 
   if (buttons & BUTTON_SELECT){ // Skip step and go to next
@@ -707,19 +718,6 @@ while(millis() <= endTime) {
   display.clearDisplay();
   display.setCursor(0, 0);
   display.setTextSize(1);
-  //lastSent = publishOpstate(lastSent, FREQ);
-  /*if (statusMQTT == true) {
-    sprintf(message_buff, "%d", minutesStep);
-    client.publish(timerStep_topic, message_buff, true);
-    sprintf(message_buff, "%d", Step+1);
-    client.publish(autoStep_topic, message_buff, true);
-    
-    display.println("Auto Onl");
-    }
-  else {
-    display.println("Auto Offl");
-    }*/
-
   display.print("STEP: ");
   display.println(Step+1);
   display.print("min: ");
@@ -762,7 +760,7 @@ while(true){
     display.setTextSize(1);
     display.println("Fin de cycle");
     display.display();
-    delay(5000);
+    delay(1000);
     opState = RUN; // maintain current state in RUN
     return;
     }
@@ -770,16 +768,7 @@ while(true){
   display.clearDisplay();
   display.setCursor(0, 0);
   display.setTextSize(1);
-  //lastSent = publishOpstate(lastSent, FREQ);
-  
-  if (statusMQTT == true) {
-    
-    display.println("AUTO Onl");
-    }
-  else  {
-    display.println("AUTO Offl");
-    }
-
+  display.println("AUTO");
   display.println("S | T | D");
 
   for (step = 0; step < 4; step++) { // display steps values
@@ -790,7 +779,7 @@ while(true){
     display.println(stepd[step]);
     }
   display.display();
-
+  delay(100);
   }
 }
 
@@ -1108,36 +1097,11 @@ Serial.println("Reconnecte");
 while (!client.connected()) {
     Serial.print("Attempting MQTT connection...");
     // Attempt to connect
-    if (client.connect("picoclient")) {
+    String clientId = "picoclient-";
+    clientId += String(random(0xffff), HEX);
+    
+    if (client.connect(clientId.c_str())) {
       Serial.println("connected");
-      // Once connected, publish an announcement...
-      // client.publish("outTopic","hello world");
-      // ... and resubscribe
-      //client.subscribe(cde_setpoint_topic);
-      /*delay(100);
-      client.subscribe(cde_pwm_topic);
-      delay(100);
-      client.subscribe(cde_Kp_topic);
-      delay(100);
-      client.subscribe(cde_Ki_topic);
-      delay(100);
-      client.subscribe(cde_Kd_topic);
-      delay(100);
-      client.subscribe(cde_sT1_topic);
-      delay(100);
-      client.subscribe(cde_sT2_topic);
-      delay(100);
-      client.subscribe(cde_sT3_topic);
-      delay(100);
-      client.subscribe(cde_sT4_topic);
-      delay(100);
-      client.subscribe(cde_sd1_topic);
-      delay(100);
-      client.subscribe(cde_sd2_topic);
-      delay(100);
-      client.subscribe(cde_sd3_topic);
-      delay(100);
-      client.subscribe(cde_sd4_topic);*/
       
       client.subscribe(subscribe_topic);
       delay(500);
@@ -1164,8 +1128,6 @@ while (!client.connected()) {
 // ************************************************
 void callback(char* topic, byte* payload, unsigned int length)
 {
-unsigned int i;
-//char *s;
 StaticJsonDocument<256> doc;
 Serial.print("Message arrived [");
 Serial.print(topic);
