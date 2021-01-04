@@ -191,12 +191,13 @@ pinMode(BUTTON_SELECT_PIN, INPUT);
 
 // LED status
 pinMode(STATUSLED_PIN, OUTPUT);
-digitalWrite(STATUSLED_PIN, HIGH); //High during init
+
 
 // Initialize Relay Control
 Serial.println("Initialize Relay Control");
 pinMode(RELAY_PIN, OUTPUT);    // Output mode to drive relay
 digitalWrite(RELAY_PIN, LOW);  // make sure it is off to start
+digitalWrite(STATUSLED_PIN, LOW); //Low during init
 
 // Initialize PWM output
 Serial.println("Initialize PWM output");
@@ -388,6 +389,7 @@ Input = sensors.getTempC(tempSensor);
 sensors.requestTemperatures();
 if (Input <= 0){ //check if disconnected -127
   digitalWrite(RELAY_PIN, LOW); // safe
+  digitalWrite(STATUSLED_PIN, LOW);
   opState = OFF;
   return;
   }
@@ -419,9 +421,11 @@ if(now - windowStartTime>WindowSize){ //time to shift the Relay Window
   }
 if((onTime > 100) && (onTime > (now - windowStartTime))){
   digitalWrite(RELAY_PIN,HIGH);
+  digitalWrite(STATUSLED_PIN, HIGH);
   }
 else {
   digitalWrite(RELAY_PIN,LOW);
+  digitalWrite(STATUSLED_PIN, LOW); //High during init
   }
 }
 
@@ -472,6 +476,7 @@ sensors.requestTemperatures();
 
 
 digitalWrite(RELAY_PIN, LOW);  // make sure it is off
+digitalWrite(STATUSLED_PIN, LOW); //
 
 uint8_t buttons = 0;
 lastInput = millis();
@@ -595,6 +600,7 @@ while(true){
   // Safe mode if no temperature reading
     if (Input <= 0){ //check if disconnected -127
     digitalWrite(RELAY_PIN, LOW); // switch off heat
+    digitalWrite(STATUSLED_PIN, LOW); //High during init
     opState = OFF;
     return;
     }
@@ -652,6 +658,7 @@ while(millis() <= endTime) {
   // Safe mode if temperature not read
   if (Input <= 0){ //check if disconnected -127
     digitalWrite(RELAY_PIN, LOW); // switch off
+    digitalWrite(STATUSLED_PIN, LOW); //High during init
     opState = OFF;
     return;
     }
@@ -1135,7 +1142,8 @@ if ((eepromVar1.eeSetpoint != Setpoint) | (eepromVar1.eeKp != Kp) | (eepromVar1.
 unsigned long publishOpstate(unsigned long timestamp, unsigned long freq)
 {
   unsigned long returntime = timestamp;
-  
+  char numstr[10]="";
+
   if (millis() > timestamp + freq)
   {
     switch (opState){
@@ -1146,7 +1154,8 @@ unsigned long publishOpstate(unsigned long timestamp, unsigned long freq)
       doc["opState"] = "RUN";
       break;
       case AUTO:
-      doc["opState"] = "AUTO";
+      sprintf(numstr, "A%d %d", cStep+1, minutesStep);
+      doc["opState"] = numstr;
       break;
       case SETP:
       doc["opState"] = "SETP";
@@ -1194,6 +1203,7 @@ lastSent = publishOpstate(lastSent, FREQ);
 
 if (opState == OFF){
   digitalWrite(RELAY_PIN, LOW);  // make sure relay is off
+  digitalWrite(STATUSLED_PIN, LOW); //High during init
   if (pwm_on == true){
     analogWrite(PWM_OUT, 0); // switch off the pump
     }
