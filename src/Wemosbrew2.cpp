@@ -67,7 +67,7 @@ unsigned long lastSent = millis();   // timestamp last MQTT message published
 const unsigned long FREQ = 15000;
 unsigned long lastReceived = 0;
 char message_buff[256]; //Buffer for incomming MQTT messages
-StaticJsonDocument<256> doc; //document µJson pour MQTT
+
 
 // ************************************************
 // PID Variables and constants
@@ -76,7 +76,7 @@ StaticJsonDocument<256> doc; //document µJson pour MQTT
 double Setpoint;
 double Input;
 double Output;
-float pctchauf;
+double pctchauf;
 int minutesStep =0;
 int cStep =0;
 
@@ -1142,7 +1142,8 @@ if ((eepromVar1.eeSetpoint != Setpoint) | (eepromVar1.eeKp != Kp) | (eepromVar1.
 unsigned long publishOpstate(unsigned long timestamp, unsigned long freq)
 {
   unsigned long returntime = timestamp;
-  char numstr[10]="";
+  char numstr[10];
+  StaticJsonDocument<256> doc; //document µJson pour MQTT
 
   if (millis() > timestamp + freq)
   {
@@ -1154,8 +1155,10 @@ unsigned long publishOpstate(unsigned long timestamp, unsigned long freq)
       doc["opState"] = "RUN";
       break;
       case AUTO:
-      sprintf(numstr, "A%d %d", cStep+1, minutesStep);
+      snprintf(numstr, 10, "S%d %dm", cStep+1, minutesStep);
+      Serial.println(numstr);
       doc["opState"] = numstr;
+      
       break;
       case SETP:
       doc["opState"] = "SETP";
@@ -1185,7 +1188,9 @@ unsigned long publishOpstate(unsigned long timestamp, unsigned long freq)
     //doc["cStep"] = cStep;
     //doc["cMin"] = minutesStep;
     
+    
     size_t n = serializeJson(doc, message_buff);
+    Serial.println(n);
     client.publish(publish_topic, message_buff, n);
     client.loop();
     Serial.println("Client Loop");
